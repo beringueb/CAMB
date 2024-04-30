@@ -24,7 +24,7 @@ DEBUGFLAGS+= -openmp
 endif
 
 ## This is flag is passed to the Fortran compiler allowing it to link C++ if required (not usually):
-F90CRLINK = -cxxlib
+F90CRLINK = -cxxlib 
 MODOUT = -module $(OUTPUT_DIR)
 SMODOUT = -module $(DLL_DIR)
 ifneq ($(FISHER),)
@@ -40,7 +40,7 @@ ifeq "$(gfortErr)" "0"
 F90C     = gfortran
 SFFLAGS =  -shared -fPIC
 
-FFLAGS =  -O3 -fopenmp -ffast-math -fmax-errors=4
+FFLAGS =  -O3 -fopenmp -ffast-math -fmax-errors=4 
 DEBUGFLAGS = -cpp -g -fbounds-check -fbacktrace -ffree-line-length-none -fmax-errors=4 -ffpe-trap=invalid,overflow,zero
 MODOUT =  -J$(OUTPUT_DIR)
 SMODOUT = -J$(DLL_DIR)
