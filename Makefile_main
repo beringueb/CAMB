@@ -53,7 +53,7 @@ CAMBSO       =  $(DLL_DIR)/constants.o  $(DLL_DIR)/utils.o $(EXTCAMBFILES)  $(DL
 	$(DLL_DIR)/$(NONLINEAR).o $(DLL_DIR)/lensing.o $(DLL_DIR)/$(BISPECTRUM).o $(DLL_DIR)/cmbmain.o \
 	$(DLL_DIR)/camb.o $(DLL_DIR)/camb_python.o
 
-F90CRLINK ?= -lstdc++
+# F90CRLINK ?= -lstdc++
 
 ## CosmoRec
 ifeq ($(RECOMBINATION),cosmorec)

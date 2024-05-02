@@ -24,8 +24,15 @@ DEBUGFLAGS+= -openmp
 endif
 
 ## This is flag is passed to the Fortran compiler allowing it to link C++ if required (not usually):
-F90CRLINK = -cxxlib 
+# F90CRLINK = -cxxlib 
+F90CRLINK = -cxxlib
+ifneq "$(ifortVer_major)" "14"
+F90CRLINK += -qopt-report=0 -qopt-report-phase=vec
+else
+F90CRLINK += -vec_report0
+endif
 MODOUT = -module $(OUTPUT_DIR)
+# AR     = xiar
 SMODOUT = -module $(DLL_DIR)
 ifneq ($(FISHER),)
 FFLAGS += -mkl
@@ -38,9 +45,15 @@ ifeq "$(gfortErr)" "0"
 #Gfortran compiler:
 #The options here work in v4.6+. Python wrapper needs v4.9+.
 F90C     = gfortran
-SFFLAGS =  -shared -fPIC
+# SFFLAGS =  -shared -fPIC
+# SFFLAGS = -dynamiclib
 
-FFLAGS =  -O3 -fopenmp -ffast-math -fmax-errors=4 
+SFFLAGS =  -fPIC -dynamiclib
+
+FFLAGS =  -O3 -openmp -ffast-math -fmax-errors=4 -ffpe-summary='none'
+
+# FFLAGS =  -O3 -fopenmp -ffast-math -fmax-errors=4 
+# FFLAGS = -MMD -cpp -ffree-line-length-none -fmax-errors=4 -fopenmp
 DEBUGFLAGS = -cpp -g -fbounds-check -fbacktrace -ffree-line-length-none -fmax-errors=4 -ffpe-trap=invalid,overflow,zero
 MODOUT =  -J$(OUTPUT_DIR)
 SMODOUT = -J$(DLL_DIR)
