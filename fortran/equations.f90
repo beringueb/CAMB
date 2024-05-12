@@ -8,6 +8,7 @@
     class(CAMBdata) :: this
     real(dl), intent(in) :: a
     real(dl) :: dtauda, grhoa2, grhov_t
+    integer :: f_i = 1
 
     call this%CP%DarkEnergy%BackgroundDensityAndPressure(this%grhov, a, grhov_t)
 
@@ -39,7 +40,9 @@
     ! https://cosmologist.info/notes/CAMB.pdf
 
     !Description of this file. Change if you make modifications.
-    character(LEN=*), parameter :: Eqns_name = 'cdm_gauge'
+    ! andrea
+    character(LEN=*), parameter :: Eqns_name = 'cdm_gauge_rayleigh'
+    ! andrea
 
     logical, parameter :: plot_evolve = .false. !for outputing time evolution
 
@@ -64,6 +67,12 @@
     integer, parameter :: initial_nummodes =  initial_iso_neutrino_vel
 
     type EvolutionVars
+
+        ! andrea
+        real(dl) RayleighSwitchOnTime
+        logical Rayleigh
+        integer g_ix_freq, polind_freq, freq_neq
+        ! andrea
         real(dl) q, q2
         real(dl) k_buf,k2_buf ! set in initial
         logical :: is_cosmological_constant
@@ -298,11 +307,11 @@
         if (.not. EV%no_phot_multpoles .and. (.not.CP%WantCls .or. EV%k_buf>0.03*CP%Accuracy%AccuracyBoost)) &
             tau_switch_no_phot_multpoles =max(15/EV%k_buf,State%taurend)*CP%Accuracy%AccuracyBoost
     end if
-
+    ! andrea
     next_switch = min(tau_switch_ktau, tau_switch_nu_massless,EV%TightSwitchoffTime, tau_switch_nu_massive, &
-        tau_switch_no_nu_multpoles, tau_switch_no_phot_multpoles, tau_switch_nu_nonrel, noSwitch, &
-        tau_switch_saha, tau_switch_evolve_TM)
-
+        tau_switch_no_nu_multpoles, tau_switch_no_phot_multpoles, tau_switch_nu_nonrel &
+        EV%RayleighSwitchOnTime, noSwitch, tau_switch_saha, tau_switch_evolve_TM)
+    !andrea
     if (next_switch < tauend) then
         if (next_switch > tau+smallTime) then
             call GaugeInterface_ScalEv(EV, y, tau,next_switch,tol1,ind,c,w)
@@ -342,6 +351,16 @@
                 y(EV%polind+3) =y(EV%g_ix+3)/4
             end if
         else if (next_switch==tau_switch_ktau) then
+            ! andrea
+            else if (next_switch == EV%RayleighSwitchOnTime) then
+                 EVout%RayleighSwitchOnTime = noSwitch
+                 EVout%Rayleigh = .true.
+                 call SetupScalarArrayIndices(EVout)
+                 call CopyScalarVariableArray(y,yout, EV, EVout)
+                 EV=EVout
+                 y=yout
+                 ind=1
+            ! andrea
             !k tau >> 1, evolve massless neutrino effective fluid up to l=2
             EVout%high_ktau_neutrino_approx=.true.
             EVout%nq(1:CP%Nu_mass_eigenstates) = State%NuPerturbations%nqmax
@@ -522,6 +541,9 @@
     subroutine SetupScalarArrayIndices(EV, max_num_eqns)
     !Set up array indices after the lmax have been decided
     use MassiveNu
+    !andrea
+    use ThermoData
+    ! andrea
     !Set the numer of equations in each hierarchy, and get total number of equations for this k
     type(EvolutionVars) EV
     integer, intent(out), optional :: max_num_eqns
@@ -540,7 +562,18 @@
             EV%polind = neq -1 !polind+2 is L=2, for polarizationthe first calculated
             neq=neq + EV%lmaxgpol-1
         end if
+        ! andrea
+        if (EV%Rayleigh) then
+               EV%g_ix_freq=neq+1
+               EV%polind_freq = neq+ (EV%lmaxg+1) -1
+               EV%freq_neq=(EV%lmaxg+1+EV%lmaxgpol-1)
+               neq=neq+EV%freq_neq*num_cmb_freq
+        end if
+        ! andrea
     end if
+    ! andrea
+    maxeq=maxeq+(EV%lmaxg+1+EV%lmaxgpol-1)*num_cmb_freq
+    ! andrea
     if (.not. EV%no_nu_multpoles) then
         !Massless neutrino multipoles
         EV%r_ix= neq+1
@@ -636,6 +669,9 @@
     end subroutine SetupScalarArrayIndices
 
     subroutine CopyScalarVariableArray(y,yout, EV, EVout)
+    ! andrea
+    use ThermoData
+    ! andrea
     type(EvolutionVars) EV, EVOut
     real(dl), intent(in) :: y(EV%nvar)
     real(dl), intent(out) :: yout(EVout%nvar)
@@ -662,6 +698,21 @@
             lmax = min(EV%lmaxgpol,EVout%lmaxgpol)
             yout(EVout%polind+2:EVout%polind+lmax)=y(EV%polind+2:EV%polind+lmax)
         end if
+        ! andrea
+        if (EV%Rayleigh .and. EVout%Rayleigh) then
+             do i=1,num_cmb_freq
+                 !assume number of frequencies is fixed
+             ix_off2 = EVOut%g_ix_freq + (i-1)*EVOut%freq_neq
+             ix_off = EV%g_ix_freq + (i-1)*EV%freq_neq
+             lmax = min(EV%lmaxg,EVout%lmaxg)
+             yout(ix_off2:ix_off2+lmax)=y(ix_off:ix_off+lmax)
+             lmax = min(EV%lmaxgpol,EVout%lmaxgpol)
+             ix_off2 = EVOut%polind_freq + (i-1)*EVOut%freq_neq
+             ix_off = EV%polind_freq + (i-1)*EV%freq_neq
+             yout(ix_off2+2:ix_off2+lmax)=y(ix_off+2:ix_off+lmax)
+             end do
+            end if
+        ! andrea
     end if
 
     if (.not. EV%no_nu_multpoles .and. .not. EVout%no_nu_multpoles) then
@@ -1543,9 +1594,11 @@
 
                     if (tau  < State%tau0) then
                         polter_line = 0.1_dl*y(lineoff+2)+9._dl/15._dl*y(lineoffpol+2)
-                        sources(2)=visibility*polter_line*(15._dl/2._dl)/(f_K(State%tau0-tau)*k)**2
+                        ! andrea
+                        sources(s_ix+2)=visibility*polter_line*(15._dl/2._dl)/(f_K(State%tau0-tau)*k)**2
+                        ! andrea
                     else
-                        sources(2)=0
+                        sources(s_ix+2)=0
                     end if
 
                     if (.not. CP%SourceTerms%use_21cm_mK) sources(2)= sources(2) /W%Fq
@@ -1602,21 +1655,29 @@
         end associate
     end do
     end subroutine output_window_sources
-
-    subroutine output(EV, y, j, tau,sources, num_custom_sources)
+    ! andrea
+    subroutine output(EV, yin, j, tau,sources, num_custom_sources)
+    ! andrea
     type(EvolutionVars) EV
+    ! andrea
+    real(dl) yin(EV%nvar),yprimein(EV%nvar)
+    ! andrea
     real(dl) y(EV%nvar), yprime(EV%nvar)
     integer, intent(in) :: j
     real(dl) tau
     real(dl), target :: sources(:)
     integer, intent(in) :: num_custom_sources
-
-    yprime = 0
+    
+    ! andrea
+    y(1:EV%nvar)=yin(1:EV%nvar)
+    yprimein = 0
     EV%OutputSources => Sources
     EV%OutputStep = j
     if (num_custom_sources>0) &
         EV%CustomSources => sources(State%CLdata%CTransScal%NumSources - num_custom_sources+1:)
-    call derivs(EV,EV%ScalEqsToPropagate,tau,y,yprime)
+    call derivs(EV,EV%ScalEqsToPropagate,tau,y,yprimein)
+    yprime(1:EV%nvar) = yprimein(1:EV%nvar)
+    ! andrea
     nullify(EV%OutputSources, EV%CustomSources)
 
     end subroutine output
@@ -1772,6 +1833,7 @@
         i_qg=5,i_qr=6,i_vb=7,i_pir=8, i_eta=9, i_aj3r=10,i_clxde=11,i_vde=12
     integer, parameter :: i_max = i_vde
     real(dl) initv(6,1:i_max), initvec(1:i_max)
+    integer f_i
 
     nullify(EV%OutputTransfer) !Should not be needed, but avoids issues in ifort 14
     nullify(EV%OutputSources)
@@ -1817,6 +1879,14 @@
     end if
     if (second_order_tightcoupling) ep=ep*2
     EV%TightSwitchoffTime = min(EV%ThermoData%tight_tau, EV%ThermoData%OpacityToTime(EV%k_buf/ep))
+    ! andrea
+    if (num_cmb_freq>0) then
+        EV%RayleighSwitchOnTime = EV%TightSwitchoffTime
+    else
+        EV%RayleighSwitchOnTime=CP%tau0+1
+    end if
+        EV%Rayleigh = .false.
+    ! andrea
 
     y=0
 
@@ -2165,6 +2235,10 @@
     real(dl) dgpi,dgrho_matter,grho_matter, clxnu, gpres_nu
     !non-flat vars
     real(dl) cothxor !1/tau in flat case
+    ! andrea
+    integer f_i
+    real(dl) polter_freq, opac_rayleigh, opac_tot
+    ! andrea
     real(dl) xe,Trad, Delta_TM, Tmat, Delta_TCMB
     real(dl) delta_p_b, wing_t, wing2_t,winv_t
     real(dl) Delta_source2, polter_line
@@ -2177,6 +2251,9 @@
     real(dl) ddopacity, visibility, dvisibility, ddvisibility, exptau, lenswindow
     real(dl) ISW, quadrupole_source, doppler, monopole_source, tau0, ang_dist
     real(dl) dgrho_de, dgq_de, cs2_de
+    ! andrea
+    integer f_i, ix_off, s_ix
+    ! andrea
 
     k=EV%k_buf
     k2=EV%k2_buf
@@ -2442,6 +2519,52 @@
             endif
         end if
     end if
+    
+    ! andrea
+    if (EV%Rayleigh) then
+         !assume after tight coupling ended
+         do f_i = 1, num_cmb_freq
+                opac_rayleigh = freq_factors(f_i)*max(0._dl,1-Recombination_xe(a))*akthom/a2**3
+                opac_tot=opac_rayleigh+opacity
+                ind = EV%g_ix_freq + (f_i-1)*EV%freq_neq
+                ayprime(ind)=-k*ay(ind+1)
+                ayprime(ind+1)= EV%denlk(1)*ay(ind)-EV%denlk2(1)*ay(ind+2) !+
+                E2=ay(EV%polind_freq + (f_i-1)*EV%freq_neq +2)
+                polter_freq = ay(ind+2)/10+9._dl/15*E2 !2/15*(3/4 pig + 9/2 E2)
+                if (EV%lmaxg>2) then
+                     ayprime(ind+2)=EV%denlk(2)*ay(ind+1)-EV%denlk2(2)*ay(ind+3)-opac_tot*(ay(ind+2) - polter_freq) &
+                       -opac_rayleigh*(ay(EV%g_ix+2) - polter) 
+                     ix= ind+2
+                     do  l=3,EV%lmaxg-1
+                        ix=ix+1
+                        ayprime(ix)=(EV%denlk(l)*ay(ix-1)-EV%denlk2(l)*ay(ix+1))-opac_tot*ay(ix)-(opac_rayleigh)*ay(EV%g_ix+l)
+                     end do
+                     ix=ix+1
+                  !  Truncate the photon moment expansion
+                     ayprime(ix)=k*ay(ix-1)-(EV%lmaxg+1)*cothxor*ay(ix) -opac_tot*ay(ix)-opac_rayleigh*ay(EV%g_ix+EV%lmaxg)
+                else 
+                     ayprime(ind+2)=EV%denlk(2)*ay(ind+1)-opac_tot*(ay(ind+2) - polter_freq)-opac_rayleigh*(ay(EV%g_ix+2) - polter) 
+                endif
+        !  Polarization
+                    !l=2
+                    ix=EV%polind_freq+(f_i-1)*EV%freq_neq + 2
+                    if (EV%lmaxgpol>2) then
+                      ayprime(ix) = -opac_tot*(ay(ix) - polter_freq) - k/3._dl*ay(ix+1)- (opac_rayleigh)*(ay(EV%polind+2) - polter)
+                      do l=3,EV%lmaxgpol-1
+                       ix=ix+1
+                       ayprime(ix)=-opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+l) + (EV%denlk(l)*ay(ix-1)-EV%polfack(l)*ay(ix+1))
+                      end do
+                      ix=ix+1
+                      !truncate
+                      ayprime(ix)=-opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+EV%lmaxgpol) + &
+                        k*EV%poltruncfac*ay(ix-1)-(EV%lmaxgpol+3)*cothxor*ay(ix)
+                   else !closed case
+                      ayprime(ix) = -opac_tot*(ay(ix) - polter_freq)-opac_rayleigh*ay(EV%polind+2)
+                   endif
+         end do
+        end if
+     end if
+    ! andrea
 
     if (.not. EV%no_nu_multpoles) then
         !  Massless neutrino equations of motion.
@@ -2690,6 +2813,27 @@
             State%CP%DarkEnergy%diff_rhopi_Add_Term(dgrho_de, dgq_de, grho, &
             gpres, w_dark_energy_t, State%grhok, adotoa, &
             EV%kf(1), k, grhov_t, z, k2, ayprime, ay, EV%w_ix)
+        ! andrea
+        s_ix=0
+        do f_i = 1, nscatter
+            if (.not. EV%no_phot_multpoles .and. EV%Rayleigh .and. f_i>1) then
+                ix_off=EV%g_ix_freq+(f_i-2)*EV%freq_neq 
+                y(EV%g_ix:EV%g_ix+EV%freq_neq-1) = yin(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
+                     yin(ix_off:ix_off+EV%freq_neq-1)
+                 yprime(EV%g_ix:EV%g_ix+EV%freq_neq-1) = yprimein(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
+                     yprimein(ix_off:ix_off+EV%freq_neq-1)
+
+                 pig =y(EV%g_ix+2)
+                 polter = 0.1_dl*pig+9._dl/15._dl*ypol(2)
+                 pigdot=yprime(EV%g_ix+2)
+                 octg=y(EV%g_ix+3)
+                 octgprime=yprime(EV%g_ix+3)
+                 clxg=y(EV%g_ix)
+                 qg  =y(EV%g_ix+1)
+                 qgdot =yprime(EV%g_ix+1)
+
+            end if
+        ! andrea
         phi = -((dgrho +3*dgq*adotoa/k)/EV%Kf(1) + dgpi)/(2*k2)
 
         if (associated(EV%OutputTransfer)) then
@@ -2757,21 +2901,26 @@
             doppler = ((sigma + vb)*dvisibility + (sigmadot + vbdot)*visibility)/k
             quadrupole_source = (5.0d0/8.0d0)*(3*polter*ddvisibility + 6*polterdot*dvisibility &
                 + (k**2*polter + 3*polterddot)*visibility)/k**2
-
-            EV%OutputSources(1) = ISW + doppler + monopole_source + quadrupole_source
+            ! andrea NOT SURE
+            EV%OutputSources(s_ix+1) = ISW + doppler + monopole_source + quadrupole_source
+            ! andrea
             ang_dist = f_K(tau0-tau)
             if (tau < tau0) then
                 !E polarization source
                 EV%OutputSources(2)=visibility*polter*(15._dl/8._dl)/(ang_dist**2*k2)
                 !factor of four because no 1/16 later
             end if
-
-            if (size(EV%OutputSources) > 2) then
+            ! andrea
+            s_ix=s_ix+2
+            if (size(EV%OutputSources) > 2 .and. f_i==1) then
                 !Get lensing sources
                 if (tau>State%tau_maxvis .and. tau0-tau > 0.1_dl) then
                     EV%OutputSources(3) = -2*phi*f_K(tau-State%tau_maxvis)/(f_K(tau0-State%tau_maxvis)*ang_dist)
                     !We include the lensing factor of two here
                 end if
+                ! andrea
+                s_ix=s_ix+1 
+                ! andrea
             end if
             if (State%num_redshiftwindows > 0) then
                 call output_window_sources(EV, EV%OutputSources, ay, ayprime, &

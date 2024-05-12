@@ -43,6 +43,18 @@
         derived_zdrag=6, derived_rdrag=7,derived_kD=8,derived_thetaD=9, derived_zEQ =10, derived_keq =11, &
         derived_thetaEQ=12, derived_theta_rs_EQ = 13
     integer, parameter :: nthermo_derived = 13
+    ! andrea
+    integer, parameter :: num_cmb_freq = 5
+    integer, parameter :: nscatter = num_cmb_freq+1
+    real(dl) :: freq_factors(num_cmb_freq)  = &
+     [(143/ 3125349._dl)**4, (217/ 3125349._dl)**4, (353/ 3125349._dl)**4, (545/ 3125349._dl)**4, (857/ 3125349._dl)**4]
+    ! andrea
+    
+    ! andrea :
+    integer, parameter :: num_cmb_freq = 0
+    integer, parameter :: nscatter = num_cmb_freq+1
+    real(dl) :: freq_factors(num_cmb_freq)  ![ (554/ 3125349._dl)**4*0 ]
+    ! 
 
     Type lSamples
         integer :: nl = 0
@@ -64,9 +76,14 @@
         !Background thermal history, interpolated from precomputed tables
         integer :: nthermo !Number of table steps
         !baryon temperature, sound speed, ionization fractions, and opacity
-        real(dl), dimension(:), allocatable :: tb, cs2, xe, dotmu
+        ! andrea
+        real(dl), dimension(:), allocatable :: tb, cs2, xe
         ! e^(-tau) and derivatives
-        real(dl), dimension(:), allocatable :: emmu, dcs2,demmu, ddotmu, dddotmu, ddddotmu
+        real(dl), dimension(:), allocatable :: dcs2
+        real(dl) dotmu(nthermo,nscatter), ddotmu(nthermo,nscatter)
+        real(dl) sdotmu(nthermo,nscatter),emmu(nthermo,nscatter)
+        real(dl) demmu(nthermo,nscatter)
+        real(dl) dddotmu(nthermo,nscatter),ddddotmu(nthermo,nscatter)
         real(dl), dimension(:), allocatable :: ScaleFactor, dScaleFactor, adot, dadot
         real(dl), dimension(:), allocatable :: winlens, dwinlens
         real(dl) tauminn,dlntau
@@ -137,12 +154,15 @@
 
         real(dl), dimension (:,:,:), allocatable :: Cl_Scalar_Array
         !Indices are Cl_xxx( l , field1,field2)
-        !where ordering of fields is T, E, \psi (CMB lensing potential), window_1, window_2...
+        !where ordering of fields is T, E, \psi (CMB lensing potential),T_freq_1,E_freq_1,.... window_1, window_2...
 
         !The following are set only if doing lensing
         integer lmax_lensed !Only accurate to rather less than this
         real(dl) , dimension (:,:), allocatable :: Cl_lensed
         !Cl_lensed(l, Cl_type) are the interpolated Cls
+        ! andrea
+        real(dl) , dimension (:,:,:,:,:), allocatable :: Cl_lensed_freqs
+        ! andrea
     contains
     procedure :: InitCls => TCLdata_InitCls
     procedure :: output_cl_files => TCLdata_output_cl_files
@@ -1603,20 +1623,22 @@
         if (present(dopacity)) then
             dopacity = this%ddotmu(this%nthermo)/(tau*this%dlntau)
         end if
+    ! andrea
     else
         cs2b=this%cs2(i)+d*(this%dcs2(i)+d*(3*(this%cs2(i+1)-this%cs2(i))  &
             -2*this%dcs2(i)-this%dcs2(i+1)+d*(this%dcs2(i)+this%dcs2(i+1)  &
             +2*(this%cs2(i)-this%cs2(i+1)))))
-        opacity=this%dotmu(i)+d*(this%ddotmu(i)+d*(3*(this%dotmu(i+1)-this%dotmu(i)) &
-            -2*this%ddotmu(i)-this%ddotmu(i+1)+d*(this%ddotmu(i)+this%ddotmu(i+1) &
-            +2*(this%dotmu(i)-this%dotmu(i+1)))))
+        opacity=this%dotmu(i,1)+d*(this%ddotmu(i,1)+d*(3*(this%dotmu(i+1,1)-this%dotmu(i,1)) &
+            -2*this%ddotmu(i,1)-this%ddotmu(i+1,1)+d*(this%ddotmu(i,1)+this%ddotmu(i+1,1) &
+            +2*(this%dotmu(i,1)-this%dotmu(i+1,1)))))
         a = (this%ScaleFactor(i)+d*(this%dScaleFactor(i)+d*(3*(this%ScaleFactor(i+1)-this%ScaleFactor(i)) &
             -2*this%dScaleFactor(i)-this%dScaleFactor(i+1)+d*(this%dScaleFactor(i)+this%dScaleFactor(i+1) &
             +2*(this%ScaleFactor(i)-this%ScaleFactor(i+1))))))*tau
         if (present(dopacity)) then
-            dopacity=(this%ddotmu(i)+d*(this%dddotmu(i)+d*(3*(this%ddotmu(i+1)  &
-                -this%ddotmu(i))-2*this%dddotmu(i)-this%dddotmu(i+1)+d*(this%dddotmu(i) &
-                +this%dddotmu(i+1)+2*(this%ddotmu(i)-this%ddotmu(i+1))))))/(tau*this%dlntau)
+            dopacity=(this%ddotmu(i,1)+d*(this%dddotmu(i,1)+d*(3*(this%ddotmu(i+1,1)  &
+                -this%ddotmu(i,1))-2*this%dddotmu(i,1)-this%dddotmu(i+1,1)+d*(this%dddotmu(i,1) &
+                +this%dddotmu(i+1,1)+2*(this%ddotmu(i,1)-this%ddotmu(i+1,1))))))/(tau*this%dlntau)
+    ! 
         end if
     end if
     end subroutine Thermo_values
@@ -1645,13 +1667,16 @@
         adot = (this%adot(i)+d*(this%dadot(i)+d*(3*(this%adot(i+1)-this%adot(i)) &
             -2*this%dadot(i)-this%dadot(i+1)+d*(this%dadot(i)+this%dadot(i+1) &
             +2*(this%adot(i)-this%adot(i+1))))))
-
-        opacity=this%dotmu(i)+d*(this%ddotmu(i)+d*(3*(this%dotmu(i+1)-this%dotmu(i)) &
-            -2*this%ddotmu(i)-this%ddotmu(i+1)+d*(this%ddotmu(i)+this%ddotmu(i+1) &
-            +2*(this%dotmu(i)-this%dotmu(i+1)))))
+    ! adnrea
+        opacity=this%dotmu(i,1)+d*(this%ddotmu(i,1)+d*(3*(this%dotmu(i+1,1)-this%dotmu(i,1)) &
+            -2*this%ddotmu(i,1)-this%ddotmu(i+1,1)+d*(this%ddotmu(i,1)+this%ddotmu(i+1,1) &
+            +2*(this%dotmu(i,1)-this%dotmu(i+1,1)))))
+    ! 
     end if
 
     end subroutine Thermo_expansion_values
+
+
 
     function Thermo_OpacityToTime(this,opacity)
     class(TThermoData) :: this
@@ -1661,7 +1686,7 @@
     !Do this the bad slow way for now..
     !The answer is approximate
     j =1
-    do while(this%dotmu(j)> opacity)
+    do while(this%dotmu(j,1)> opacity)
         j=j+1
     end do
 
@@ -1682,14 +1707,15 @@
     real(dl) tau01,a0,barssc,dtau
     real(dl) tau,a,a2
     real(dl) adot,fe,thomc0
-    real(dl) dtbdla,vfi,cf1,maxvis, vis, z_scale
+    real(dl) dtbdla,vfi,cf1,maxvis, z_scale
+    real(dl), dimension(:,:), allocatable :: vis
     integer ncount,i,j1,iv,ns
     real(dl), allocatable :: spline_data(:)
     real(dl) last_dotmu, om
     real(dl) a_verydom
     real(dl) awin_lens1p,awin_lens2p,dwing_lens, rs, DA
     real(dl) a_eq, rs_eq, tau_eq, rstar
-    integer noutput
+    integer noutput, f_i
     Type(CalWins), dimension(:), allocatable, target :: RW
     real(dl) awin_lens1(State%num_redshiftwindows),awin_lens2(State%num_redshiftwindows)
     real(dl) Tspin, Trad, rho_fac, window, tau_eps
@@ -1698,7 +1724,9 @@
     real(dl) Tb21cm, winamp, z, background_boost
     character(len=:), allocatable :: outstr
     real(dl), allocatable ::  taus(:)
-    real(dl), allocatable :: xe_a(:), sdotmu(:), opts(:)
+    ! andrea
+    real(dl), allocatable :: xe_a(:), opts(:)
+    real(dl), allocatable :: sdotmu(:,:)
     real(dl), allocatable :: scale_factors(:), times(:), dt(:)
     Type(TCubicSpline) :: dotmuSp
     integer ninverse, nlin
@@ -1927,7 +1955,10 @@
     call CP%Recomb%xe_tm(a0,this%xe(1), this%tb(1))
     barssc=barssc0*(1._dl-0.75d0*CP%yhe+(1._dl-CP%yhe)*this%xe(1))
     this%cs2(1)=4._dl/3._dl*barssc*this%tb(1)
-    this%dotmu(1)=this%xe(1)*State%akthom/a0**2
+    ! andrea solo change ?
+    this%dotmu(1,:)=this%xe(1)*State%akthom/a0**2
+    sdotmu(1,:)=0
+    ! 
 
 
     !$OMP PARALLEL DO DEFAULT(SHARED), SCHEDULE(STATIC,16)
@@ -1965,12 +1996,14 @@
             end if
             this%xe(i) = CP%Reion%x_e(1/a-1, tau, this%xe(ncount))
             if (CP%Accuracy%AccurateReionization .and. CP%WantDerivedParameters) then
-                this%dotmu(i)=(xe_a(i) - this%xe(i))*State%akthom/a2
+                this%dotmu(i,:)=(xe_a(i) - this%xe(i))*State%akthom/a2
 
                 if (last_dotmu /=0) then
-                    this%actual_opt_depth = this%actual_opt_depth - 2._dl*(tau-taus(i-1))/(1._dl/this%dotmu(i)+1._dl/last_dotmu)
+                    ! andrea solo change
+                    this%actual_opt_depth = this%actual_opt_depth - 2._dl*(tau-taus(i-1))/(1._dl/this%dotmu(i,1)+1._dl/last_dotmu)
                 end if
-                last_dotmu = this%dotmu(i)
+                last_dotmu = this%dotmu(i,1)
+                ! 
             end if
         else
             this%xe(i)=xe_a(i)
@@ -1986,9 +2019,11 @@
         this%cs2(i)=barssc*this%tb(i)*(1-dtbdla/this%tb(i)/3._dl)
 
         ! Calculation of the visibility function
-        this%dotmu(i)=this%xe(i)*State%akthom/a2
+        ! andrea solo change
+        this%dotmu(i,:)=this%xe(i)*State%akthom/a2
 
-        if (this%tight_tau==0 .and. 1/(tau*this%dotmu(i)) > 0.005) this%tight_tau = tau !0.005
+        if (this%tight_tau==0 .and. 1/(tau*this%dotmu(i,1)) > 0.005) this%tight_tau = tau !0.005
+        !
         !Tight coupling switch time when k/opacity is smaller than 1/(tau*opacity)
     end do
 
@@ -1999,18 +2034,22 @@
     end if
 
     !Integrate for optical depth
-    call dotmuSp%Init(taus(nthermo:1:-1), this%dotmu(nthermo:1:-1))
+    ! andrea solo change
+    call dotmuSp%Init(taus(nthermo:1:-1), this%dotmu(nthermo:1:-1,1))
+    ! 
     allocate(opts(nthermo))
     call dotmuSp%IntegralArray(opts)
     sdotmu = opts(nthermo:1:-1)
     do j1=1,nthermo
-        if (sdotmu(j1)< -69) then
-            this%emmu(j1)=1.d-30
+        ! andrea change
+        if (sdotmu(j1,1)< -69) then
+            this%emmu(j1,:)=1.d-30
         else
-            this%emmu(j1)=exp(sdotmu(j1))
+            this%emmu(j1,:)=exp(sdotmu(j1,:))
             if (CP%Reion%Reionization .and. .not. CP%Accuracy%AccurateReionization .and. &
                 this%actual_opt_depth==0 .and. this%xe(j1) < 1e-3) then
-                this%actual_opt_depth = -sdotmu(j1)
+                this%actual_opt_depth = -sdotmu(j1,1)
+        ! 
             end if
         end if
     end do
@@ -2019,7 +2058,9 @@
     zstar_max = 2000._dl * z_scale
     if ((.not. CP%Reion%Reionization .or. CP%Accuracy%AccurateReionization) .and. CP%WantDerivedParameters) then
         do j1=nint(log(100/this%tauminn)/this%dlntau),nthermo
-            if (-sdotmu(j1) - this%actual_opt_depth < 1) then
+            ! andre change
+            if (-sdotmu(j1,1) - this%actual_opt_depth < 1) then
+            ! 
                 !Bracket z_star
                 zstar_min = 1/this%scaleFactor(j1+1)-1
                 zstar_max = 1/this%scaleFactor(j1-2)-1
@@ -2052,12 +2093,17 @@
         cf1=1._dl
         ns=nthermo
     else
-        cf1=exp(-sdotmu(ncount))
+        ! andre
+        cf1=exp(-sdotmu(ncount,1))
+        ! 
         ns=ncount
     end if
     maxvis = 0
     do j1=1,ns
-        vis = this%emmu(j1)*this%dotmu(j1)
+        ! andrea
+        vis = this%emmu(j1,1)*this%dotmu(j1,1)
+        ! 
+        !
         tau = taus(j1)
         vfi=vfi+vis*cf1*this%dlntau*tau
         if ((iv == 0).and.(vfi > 1.0d-7/CP%Accuracy%AccuracyBoost)) then
@@ -2087,7 +2133,9 @@
         awin_lens2p=0
         this%winlens=0
         do j1=1,nthermo-1
-            vis = this%emmu(j1)*this%dotmu(j1)
+            ! andrea change
+            vis = this%emmu(j1,1)*this%dotmu(j1,1)
+            ! 
             tau = this%tauminn* taus(j1)
             vfi=vfi+vis*cf1*this%dlntau*tau
             if (vfi < 0.995) then
@@ -2117,15 +2165,20 @@
 
     !$OMP PARALLEL SECTIONS DEFAULT(SHARED)
     !$OMP SECTION
-    call splder(this%dotmu,this%ddotmu,nthermo,spline_data)
-    call splder(this%ddotmu,this%dddotmu,nthermo,spline_data)
-    call splder(this%dddotmu,this%ddddotmu,nthermo,spline_data)
+    ! andrea big change !
+    do f_i=1, nscatter
+        call splder(this%dotmu(1,f_i),this%ddotmu(1,f_i),nthermo,spline_data)
+        call splder(this%ddotmu(1,f_i),this%dddotmu(1,f_i),nthermo,spline_data)
+        call splder(this%dddotmu(1,f_i),this%ddddotmu(1,f_i),nthermo,spline_data)
+        call splder(this%emmu(1,f_i),this%demmu(1,f_i),nthermo,spline_data)
+    end do
+    ! 
     if (CP%want_zstar .or. CP%WantDerivedParameters) &
         this%z_star = State%binary_search(noreion_optdepth, 1.d0, zstar_min, zstar_max, &
         & 1d-3/background_boost, 100._dl*z_scale, 4000._dl*z_scale)
     !$OMP SECTION
     call splder(this%cs2,this%dcs2,nthermo,spline_data)
-    call splder(this%emmu,this%demmu,nthermo,spline_data)
+    ! i deleted call splder(this%emmu(1,f_i) here !
     call splder(this%adot,this%dadot,nthermo,spline_data)
     if (dowinlens) call splder(this%winlens,this%dwinlens,nthermo,spline_data)
     if (CP%want_zdrag .or. CP%WantDerivedParameters) &
@@ -2256,6 +2309,48 @@
     this%HasThermoData = .true.
     end subroutine Thermo_Init
 
+    subroutine thermoarr(tau,cs2b,opacity, dopacity)
+    !Compute unperturbed sound speed squared,
+    !and ionization fraction by interpolating pre-computed tables.
+    !If requested also get time derivative of opacity
+    implicit none
+    real(dl) tau,cs2b,opacity(nscatter)
+    real(dl), intent(out), optional :: dopacity(nscatter)
+
+    integer i
+    real(dl) d
+
+    d=log(tau/tauminn)/dlntau+1._dl
+    i=int(d)
+    d=d-i
+    if (i < 1) then
+        !Linear interpolation if out of bounds (should not occur).
+        cs2b=cs2(1)+(d+i-1)*dcs2(1)
+        opacity=dotmu(1,:)+(d-1)*ddotmu(1,:)
+        stop 'thermo out of bounds'
+    else if (i >= nthermo) then
+        cs2b=cs2(nthermo)+(d+i-nthermo)*dcs2(nthermo)
+        opacity=dotmu(nthermo,:)+(d-nthermo)*ddotmu(nthermo,:)
+        if (present(dopacity)) then
+            dopacity = 0
+            stop 'thermo: shouldn''t happen'
+        end if
+    else
+        !Cubic spline interpolation.
+        cs2b=cs2(i)+d*(dcs2(i)+d*(3*(cs2(i+1)-cs2(i))  &
+        -2*dcs2(i)-dcs2(i+1)+d*(dcs2(i)+dcs2(i+1)  &
+        +2*(cs2(i)-cs2(i+1)))))
+        opacity=dotmu(i,:)+d*(ddotmu(i,:)+d*(3*(dotmu(i+1,:)-dotmu(i,:)) &
+        -2*ddotmu(i,:)-ddotmu(i+1,:)+d*(ddotmu(i,:)+ddotmu(i+1,:) &
+        +2*(dotmu(i,:)-dotmu(i+1,:)))))
+
+        if (present(dopacity)) then
+            dopacity=(ddotmu(i,:)+d*(dddotmu(i,:)+d*(3*(ddotmu(i+1,:)  &
+            -ddotmu(i,:))-2*dddotmu(i,:)-dddotmu(i+1,:)+d*(dddotmu(i,:) &
+            +dddotmu(i+1,:)+2*(ddotmu(i,:)-ddotmu(i+1,:))))))/(tau*dlntau)
+        end if
+    end if
+    end subroutine thermoarr
 
     subroutine SetTimeSteps(this,State,TimeSteps)
     !Set time steps to use for sampling the source functions for the CMB power spectra
@@ -2626,15 +2721,16 @@
     class(CAMBdata) :: State
     integer j2, i, RW_i
     real(dl) d, tau
+    ! andrea
+    integer scat
+    ! 
     Type(CalWins) :: RW(:)
 
     !     Cubic-spline interpolation.
     d=log(tau/this%tauminn)/this%dlntau+1._dl
     i=int(d)
-
     d=d-i
     if (i < this%nthermo) then
-
         this%step_redshift(j2) = this%redshift_time(i)+d*(this%dredshift_time(i)+ &
             d*(3._dl*(this%redshift_time(i+1)-this%redshift_time(i)) &
             -2._dl*this%dredshift_time(i)-this%dredshift_time(i+1)+d*(this%dredshift_time(i)+this%dredshift_time(i+1) &
@@ -2676,7 +2772,9 @@
         vis, dvis, ddvis, expmmu, lenswin)
     class(TThermoData) :: this
     real(dl), intent(in) :: tau
-    real(dl), intent(out):: a, opac, dopac, ddopac, vis, dvis, ddvis, expmmu, lenswin
+    real(dl), intent(out) :: a, ddopac
+    real(dl), dimension(:,:), intent(out) :: vis, dvis, ddvis, expmmu, dopac, opac
+    real(dl), dimension(:), intent(out) lenswin
     real(dl) d, cs2
     integer i
 
@@ -2685,33 +2783,40 @@
     d=log(tau/this%tauminn)/this%dlntau+1._dl
     i=int(d)
     d=d-i
-
+    ! andrea big change
+    do scat = 1, nscatter
+    ! 
     if (i < this%nthermo) then
-        ddopac=(this%dddotmu(i)+d*(this%ddddotmu(i)+d*(3._dl*(this%dddotmu(i+1) &
-            -this%dddotmu(i))-2._dl*this%ddddotmu(i)-this%ddddotmu(i+1)  &
-            +d*(this%ddddotmu(i)+this%ddddotmu(i+1)+2._dl*(this%dddotmu(i) &
-            -this%dddotmu(i+1)))))-(this%dlntau**2)*tau*dopac) &
+        ! andrea change
+        ddopac(j2,scat)=(this%dddotmu(i,scat)+d*(this%ddddotmu(i,scat)+d*(3._dl*(this%dddotmu(i+1,scat) &
+            -this%dddotmu(i,scat))-2._dl*this%ddddotmu(i,scat)-this%ddddotmu(i+1,scat)  &
+            +d*(this%ddddotmu(i,scat)+this%ddddotmu(i+1,scat)+2._dl*(this%dddotmu(i,scat) &
+            -this%dddotmu(i+1,scat)))))-(this%dlntau**2)*tau*dopac) &
             /(tau*this%dlntau)**2
-        expmmu=this%emmu(i)+d*(this%demmu(i)+d*(3._dl*(this%emmu(i+1)-this%emmu(i)) &
-            -2._dl*this%demmu(i)-this%demmu(i+1)+d*(this%demmu(i)+this%demmu(i+1) &
-            +2._dl*(this%emmu(i)-this%emmu(i+1)))))
-
+        expmmu=this%emmu(i,scat)+d*(this%demmu(i,scat)+d*(3._dl*(this%emmu(i+1,scat)-this%emmu(i,scat)) &
+            -2._dl*this%demmu(i,scat)-this%demmu(i+1,scat)+d*(this%demmu(i,scat)+this%demmu(i+1,scat) &
+            +2._dl*(this%emmu(i,scat)-this%emmu(i+1,scat)))))
+        ! 
         if (dowinlens) then
             lenswin=this%winlens(i)+d*(this%dwinlens(i)+d*(3._dl*(this%winlens(i+1)-this%winlens(i)) &
                 -2._dl*this%dwinlens(i)-this%dwinlens(i+1)+d*(this%dwinlens(i)+this%dwinlens(i+1) &
                 +2._dl*(this%winlens(i)-this%winlens(i+1)))))
         end if
-        vis=opac*expmmu
-        dvis=expmmu*(opac**2+dopac)
-        ddvis=expmmu*(opac**3+3*opac*dopac+ddopac)
+        vis(j2,scat)=opac(j2,scat)*expmmu(j2,scat)
+        dvis(j2,scat)=expmmu(j2,scat)*(opac(j2,scat)**2+dopac(j2,scat))
+        ddvis(j2,scat)=expmmu(j2,scat)*(opac(j2,scat)**3+3*opac(j2,scat)*dopac(j2,scat)+ddopac(j2,scat))
     else
-        ddopac=this%dddotmu(this%nthermo)
-        expmmu=this%emmu(this%nthermo)
-        vis=opac*expmmu
-        dvis=expmmu*(opac**2+dopac)
-        ddvis=expmmu*(opac**3+3._dl*opac*dopac+ddopac)
+        ! andrea solo change
+        ddopac=this%dddotmu(this%nthermo,scat))
+        expmmu(j2,scat)=this%emmu(this%nthermo,scat))
+        vis(j2,scat)=opac(j2,scat)*expmmu(j2,scat)
+        dvis(j2,scat)=expmmu(j2,scat)*(opac(j2,scat)**2+dopac(j2,scat))
+        ddvis(j2,scat)=expmmu(j2,scat)*(opac(j2,scat)**3+3._dl*opac(j2,scat)*dopac(j2,scat)+ddopac)
+        ! 
     end if
-
+    ! 
+    end do
+    ! 
     end subroutine IonizationFunctionsAtTime
 
     subroutine Init_ClTransfer(CTrans)
@@ -2792,10 +2897,12 @@
             allocate(this%Cl_scalar(CP%Min_l:CP%Max_l, C_Temp:State%Scalar_C_last), source=0._dl)
             if (CP%want_cl_2D_array) then
                 if (allocated(this%Cl_scalar_array)) deallocate(this%Cl_scalar_array)
+                ! andrea
                 allocate(this%Cl_scalar_Array(CP%Min_l:CP%Max_l, &
-                    3+State%num_redshiftwindows+CP%CustomSources%num_custom_sources, &
-                    3+State%num_redshiftwindows+CP%CustomSources%num_custom_sources))
+                    3+State%num_redshiftwindows+num_cmb_freq*2+CP%CustomSources%num_custom_sources, &
+                    3+State%num_redshiftwindows+num_cmb_freq*2+CP%CustomSources%num_custom_sources))
                 this%Cl_scalar_array = 0
+                ! andrea
             end if
         end if
 
@@ -2854,6 +2961,11 @@
     Type(CAMBParams), pointer :: CP
     integer lmin
 
+    ! andrea
+    integer nsource_out
+    integer f_i_1,f_i_2
+    ! andrea
+
     CP=> State%CP
     lmin= CP%Min_l
 
@@ -2873,8 +2985,10 @@
     end if
 
     if (CP%WantScalars .and. CP%want_cl_2D_array .and. ScalCovFile /= '' .and. this%CTransScal%NumSources>2) then
-        allocate(outarr(1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows))
-
+        ! andrea
+        nsource_out = 3+num_redshiftwindows+num_cmb_freq*2
+        allocate(outarr(1:nsource_out,1:nsource_out))
+        ! andrea
         do i=1, 3+State%num_redshiftwindows
             do j=1, 3+State%num_redshiftwindows
                 cov_names(j + (i-1)*(3+State%num_redshiftwindows)) = trim(scalar_fieldname(i))//'x'//trim(scalar_fieldname(j))
@@ -2883,16 +2997,26 @@
         unit = open_file_header(ScalCovFile, 'L', cov_names)
 
         do il=lmin,min(10000,CP%Max_l)
-            outarr=this%Cl_scalar_array(il,1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows)
+            ! andrea
+            outarr=this%Cl_scalar_array(il,1:3nsource_out,1:nsource_out)
+            ! andrea
             outarr(1:2,:)=sqrt(fact)*outarr(1:2,:)
             outarr(:,1:2)=sqrt(fact)*outarr(:,1:2)
-            write(unit,trim(numcat('(1I6,',(3+State%num_redshiftwindows)**2))//'E15.6)') il, real(outarr)
+            ! andrea
+            outarr(:,4:3+num_cmb_freq*2)=sqrt(fact)*outarr(:,4:3+num_cmb_freq*2)
+            outarr(4:3+num_cmb_freq*2,:)=sqrt(fact)*outarr(4:3+num_cmb_freq*2,:)
+            write(unit,trim(numcat('(1I6,',(nsource_out)**2))//'E15.6)') il, real(outarr)
+            ! andrea
         end do
         do il=10100,CP%Max_l, 100
-            outarr=this%Cl_scalar_array(il,1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows)
+            outarr=this%Cl_scalar_array(il,1:nsource_out,1:nsource_out)
             outarr(1:2,:)=sqrt(fact)*outarr(1:2,:)
             outarr(:,1:2)=sqrt(fact)*outarr(:,1:2)
-            write(unit,trim(numcat('(1E15.5,',(3+State%num_redshiftwindows)**2))//'E15.6)') real(il), real(outarr)
+            ! andrea
+            outarr(:,4:3+num_cmb_freq*2)=sqrt(fact)*outarr(:,4:3+num_cmb_freq*2)
+            outarr(4:3+num_cmb_freq*2,:)=sqrt(fact)*outarr(4:3+num_cmb_freq*2,:)
+            ! andrea
+            write(unit,trim(numcat('(1E15.5,',(nsource_out)**2))//'E15.6)') real(il), real(outarr)
         end do
         close(unit)
         deallocate(outarr)
@@ -2924,8 +3048,22 @@
             write(unit,'(1I6,4E15.6)')il, fact*this%Cl_lensed(il, CT_Temp:CT_Cross)
         end do
         close(unit)
+        ! andrea
+        if (num_cmb_freq>0) then
+            do f_i_1=1,num_cmb_freq
+            do f_i_2=1,num_cmb_freq
+                open(unit=fileio_unit,file=trim(LensFile)//trim(concat('_',f_i_1,'_',f_i_2)),form='formatted',status='replace')
+                do in=1,CP%InitPower%nn
+                do il=lmin, lmax_lensed
+                    write(unit,'(1I6,4E15.6)')il, fact*this%Cl_lensed_freqs(il, in, CT_Temp:CT_Cross,f_i_1,f_i_2)
+                end do
+                end do
+                close(fileio_unit)
+            end do
+            end do
+        end if
+        ! andrea
     end if
-
 
     if (CP%WantScalars .and. CP%WantTensors .and. CP%DoLensing .and. LensTotFile /= '') then
         unit = open_file_header(LensTotFile, 'L', CT_name_tags)

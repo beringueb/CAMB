@@ -168,6 +168,9 @@
     logical :: short_integral_range
     real(dl) range_fac
     logical, parameter :: approx = .false.
+    ! andrea
+    integer f_i_1,f_i_2
+    ! andrea
     real(dl) theta_cut(lmax), LensAccuracyBoost
     Type(TTimer) :: Timer
 
@@ -232,14 +235,31 @@
         !$ thread_ix = OMP_GET_MAX_THREADS()
         allocate(lens_contrib(4,CLout%lmax_lensed,thread_ix))
         allocate(ddcontribs(lmax,4),corrcontribs(lmax,4))
+        ! andrea
+        if (nscatter>1) then
+            allocate(Cl_lensed_freqs(lmin:lmax_lensed,CP%InitPower%nn,1:4,num_cmb_freq,num_cmb_freq))
+        end if
 
+        do f_i_1=nscatter,1,-1
+        do f_i_2=nscatter,1,-1
+
+        if (f_i_1==1 .and. f_i_2>1 .or. f_i_2==1 .and. f_i_1>1) cycle
+        ! andrea
         do l=lmin,CP%Max_l
             ! (2*l+1)l(l+1)/4pi C_phi_phi: Cl_scalar(l,1,C_Phi) is l^4 C_phi_phi
             Cphil3(l) = CPP(l)*(l+0.5_dl)/real((l+1)*l, dl)
             fac = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
+            ! andrea
+            if (f_i_2>1 .or. f_i_2>1) then
+            CTT(l) =   Cl_Scalar_Array(l,in,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)*fac
+            CEE(l) =   Cl_Scalar_Array(l,in,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
+            CTE(l) =   Cl_Scalar_Array(l,in,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
+            else
+            ! andrea
             CTT(l) =  CL%Cl_scalar(l,C_Temp)*fac
             CEE(l) =  CL%Cl_scalar(l,C_E)*fac
             CTE(l) =  CL%Cl_scalar(l,C_Cross)*fac
+            end if
         end do
         if (Cphil3(10) > lensing_sanity_check_amplitude) then
             call AmplitudeError()
@@ -516,6 +536,21 @@
         end do
         !$OMP END PARALLEL DO
 
+        ! andrea
+        if (f_i_1>1 .and. f_i_2>1) then
+            do l=lmin, lmax_lensed
+            !sign from d(cos theta) = -sin theta dtheta
+                fac = l*(l+1)/OutputDenominator*dtheta *2*pi
+                Cl_lensed_freqs(l,in,CT_Temp,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Temp,l,:))*fac &
+                 +  Cl_Scalar_Array(l,in,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)
+                Cl_lensed_freqs(l,in,CT_E,f_i_1-1,f_i_2-1)=sum(lens_contrib(CT_E,l,:))*fac &
+                 +  Cl_Scalar_Array(l,in,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
+                Cl_lensed_freqs(l,in,CT_B,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_B,l,:))*fac
+                Cl_lensed_freqs(l,in,CT_Cross,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Cross,l,:))*fac &
+                 +  Cl_Scalar_Array(l,in,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
+            end do
+        else
+        ! andrea
         do l=lmin, CLout%lmax_lensed
             !sign from d(cos theta) = -sin theta dtheta
             fac = l*(l+1)/OutputDenominator*dtheta*const_twopi
@@ -528,7 +563,12 @@
                 + CL%Cl_scalar(l,C_Cross)
 
         end do
-
+        ! andrea
+        end if
+            end do !loop over different initial power spectra
+    end do !frequencies
+    end do !frequencies
+        ! andrea
         if (DebugMsgs) call Timer%WriteTime('Time for corr lensing')
     end associate
 

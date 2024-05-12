@@ -748,6 +748,9 @@
             ThisSources%NonCustomSourceNum = ThisSources%SourceNum
             State%Scalar_C_last = C_Cross
         end if
+        ! andrea
+        ThisSources%SourceNum= = ThisSources%SourceNum= + num_cmb_freq*2
+        ! andrea
     else
         ThisSources%SourceNum=3
         ThisSources%NonCustomSourceNum = ThisSources%SourceNum
@@ -1548,6 +1551,9 @@
                         sums(1) = sums(1) + IV%Source_q(n,1)*J_l
                         sums(2) = sums(2) + IV%Source_q(n,2)*J_l
                         sums(3) = sums(3) + IV%Source_q(n,3)*J_l
+                        ! andrea
+                        sums(4:ThisSources%SourceNum) = sums(4:ThisSources%SourceNum) + IV%Source_q(n,4:ThisSources%SourceNum)*J_l
+                        ! andrea
                     end do
                 else
                     if (State%num_redshiftwindows>0) then
@@ -2261,9 +2267,11 @@
 
                     if (CTrans%NumSources>2 .and. State%CP%want_cl_2D_array) then
 
-                        do w_ix=1,3 + State%num_redshiftwindows
+                        !andrea
+                        do w_ix=1,3 + State%num_redshiftwindows + num_cmb_freq*2
                             Delta1= CTrans%Delta_p_l_k(w_ix,j,q_ix)
-                            if (w_ix>3) then
+                            if (w_ix>nscatter*2+1) then
+                         ! andrea
                                 associate (Win => State%Redshift_w(w_ix - 3))
                                     if (Win%kind == window_lensing) &
                                         Delta1 = Delta1 / 2 * ell * (ell + 1)
@@ -2276,8 +2284,11 @@
                                     end if
                                 end associate
                             end if
+                            ! andrea J AI PAS AJOUTE LE   + num_cmb_freq*2 car je considère qu'il est déjà compté dans le w_ix'
                             do w_ix2=w_ix,3 + State%num_redshiftwindows
-                                if (w_ix2>= 3.and. w_ix>=3) then
+                                ! andrea J AI PAS MIS D'ESPACE ENTRE 1 .and.'
+                                if (w_ix2>= nscatter*2+1 .and. w_ix>=3) then
+                                !
                                     !Skip if the auto or cross-correlation is included in direct Limber result
                                     !Otherwise we need to include the sources e.g. to get counts-Temperature correct
                                     if (CTrans%limber_l_min(w_ix2)/= 0 .and. j>=CTrans%limber_l_min(w_ix2) &
@@ -2575,13 +2586,23 @@
             end do
 
             if (State%CLdata%CTransScal%NumSources>2 .and. State%CP%want_cl_2D_array) then
-                do i=1,3+State%num_redshiftwindows + CP%CustomSources%num_custom_sources
-                    do j=i,3+State%num_redshiftwindows + CP%CustomSources%num_custom_sources
+                ! andrea
+                do i=1,3+State%num_redshiftwindows + CP%CustomSources%num_custom_sources + num_cmb_freq*2
+                    do j=i,3+State%num_redshiftwindows + CP%CustomSources%num_custom_sources  + num_cmb_freq*2
+                    ! andrea
                         if (i<3 .and. j<3) then
                             State%CLData%Cl_scalar_array(:,i,j) = State%CLData%Cl_scalar(:, ind(i,j))
                         else
-                            call lSet%InterpolateClArr(iCl_array(1,i,j), &
+                            ! andrea
+                            if (i<=3+num_cmb_freq*2 .and. j<=3+num_cmb_freq*2 .and. i>3 .and. j>3) then
+                                call InterpolateClArrTemplated(CTransS%ls,iCl_array(1,i,j,in),Cl_scalar_array(lmin, in, i,j), &
+                                CTransS%ls%l0,ind(1+mod(i-4,2),1+mod(j-4,2)))
+
+                            else
+                                call lSet%InterpolateClArr(iCl_array(1,i,j), &
                                 State%CLData%Cl_scalar_array(lSet%lmin, i,j))
+                            end if
+                            ! andrea
                         end if
                         if (i/=j) State%CLData%Cl_scalar_array(:,j,i) = State%CLData%Cl_scalar_array(:,i,j)
                     end do
