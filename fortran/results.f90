@@ -107,7 +107,7 @@
     contains
     procedure :: Init => Thermo_Init
     procedure :: OpacityToTime => Thermo_OpacityToTime
-    procedure :: total_scattering_eff => Thermo_Total_Scattering_Eff
+    !procedure :: total_scattering_eff => Thermo_Total_Scattering_Eff
     procedure :: values => Thermo_values
     procedure :: values_array => Thermo_values_array ! BB24
     procedure :: expansion_values => Thermo_expansion_values
@@ -311,6 +311,22 @@
     real(dl) :: state_function
     END FUNCTION  state_function
     end interface
+
+    ! andrea
+    interface
+    FUNCTION Recombination_xe(a)
+    use precision
+    import
+    real(dl), intent(in) :: a
+    END FUNCTION Recombination_xe
+    end interface
+
+    INTERFACE
+    FUNCTION recombination_rayleigh_eff(i)
+    integer, INTENT(IN) :: i
+    END FUNCTION recombination_rayleigh_eff
+    END INTERFACE
+    ! andrea
 
     procedure(obj_function), private :: dtauda
 
@@ -1183,7 +1199,7 @@
 
     R=this%ThermoData%r_drag0*a
     !ignoring reionisation, not relevant for distance measures
-    ddamping_da = (R**2 + 16*(1+R)/15)/(1+R)**2*dtauda(this,a)*a**2/(this%ThermoData%total_scattering_eff(a)*this%akthom) !BB24
+    ddamping_da = (R**2 + 16*(1+R)/15)/(1+R)**2*dtauda(this,a)*a**2/(total_scattering_eff(a)*this%akthom) !BB24
 
     end function ddamping_da
 
@@ -1782,20 +1798,20 @@
     end function Thermo_OpacityToTime
 
     ! andrea
-    function Thermo_Total_Scattering_Eff(this,State, a)
-    class(TThermoData) :: this
-    class(CAMBdata) :: State
+    function total_scattering_eff(a)
+    ! and
     real(dl), intent(in) :: a
-    real(dl) a2, Thermo_Total_Scattering_Eff
+    ! and
+    real(dl) a2,total_scattering_eff
 
     if (rayleigh_back_approx) then
-        a2=a**2
-        Thermo_Total_Scattering_Eff = State%CP%Recomb%x_e(a) + State%CP%Recomb%x_rayleigh(a)*(min(1._dl,&
-av_freq_factors(1)/a2**2 + av_freq_factors(2)/a2**3  + av_freq_factors(3)/a2**4))
+     a2=a**2
+     total_scattering_eff= Recombination_xe(a) + Recombination_rayleigh_eff(a)*(min(1._dl,&
+                  av_freq_factors(1)/a2**2 + av_freq_factors(2)/a2**3  + av_freq_factors(3)/a2**4))
     else
-        Thermo_Total_Scattering_Eff = State%CP%Recomb%x_e(a)
+       total_scattering_eff= Recombination_xe(a)
     end if
-    end function Thermo_Total_Scattering_Eff
+    end function total_scattering_eff
     ! andrea
 
     subroutine Thermo_Init(this, State,taumin)
@@ -2154,7 +2170,7 @@ av_freq_factors(1)/a2**2 + av_freq_factors(2)/a2**3  + av_freq_factors(3)/a2**4)
             this%xe(i) = CP%Reion%x_e(1/a-1, tau, this%xe(ncount))
             if (CP%Accuracy%AccurateReionization .and. CP%WantDerivedParameters) then
                 ! andrea
-                this%dotmu(i,1)=(this%total_scattering_eff(i) - this%xe(i))*State%akthom/a2
+                this%dotmu(i,1)=(total_scattering_eff(i) - this%xe(i))*State%akthom/a2
                 ! ancrea
 
                 if (last_dotmu /=0) then
@@ -2165,13 +2181,13 @@ av_freq_factors(1)/a2**2 + av_freq_factors(2)/a2**3  + av_freq_factors(3)/a2**4)
                 ! 
             end if
         else
-            this%xe(i)=this%total_scattering_eff(i)
+            this%xe(i)=total_scattering_eff(i)
         end if
 
         !  approximate Baryon sound speed squared (over c**2).
         fe=(1._dl-CP%yhe)*this%xe(i)/(1._dl-0.75d0*CP%yhe+(1._dl-CP%yhe)*this%xe(i))
         dtbdla=-2._dl*this%tb(i)
-        if (a*this%tb(i)-CP%tcmb < -1e-8) thenx
+        if (a*this%tb(i)-CP%tcmb < -1e-8) then
             dtbdla= dtbdla -thomc0*fe/adot*(a*this%tb(i)-CP%tcmb)/a**3
         end if
         barssc=barssc0*(1._dl-0.75d0*CP%yhe+(1._dl-CP%yhe)*this%xe(i))

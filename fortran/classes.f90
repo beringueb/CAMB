@@ -99,7 +99,6 @@
     contains
     procedure :: Init => TRecombinationModel_init
     procedure :: x_e => TRecombinationModel_xe !ionization fraction
-    procedure :: x_rayleigh => TRecombinationModel_xrayleigh
     procedure :: xe_Tm => TRecombinationModel_xe_Tm !ionization fraction and baryon temperature
     procedure :: T_m => TRecombinationModel_tm !baryon temperature
     procedure :: T_s => TRecombinationModel_ts !Spin temperature
@@ -263,23 +262,11 @@
     class(TRecombinationModel) :: this
     real(dl), intent(in) :: a
     real(dl) TRecombinationModel_xe
-    
 
     call MpiStop('TRecombinationModel_xe not implemented')
     TRecombinationModel_xe=0
 
     end function TRecombinationModel_xe
-
-    function TRecombinationModel_xrayleigh(this,a)
-        class(TRecombinationModel) :: this
-        real(dl), intent(in) :: a
-        real(dl) TRecombinationModel_xrayleigh
-        
-    
-        call MpiStop('TRecombinationModel_xrayleigh not implemented')
-        TRecombinationModel_xrayleigh=0
-    
-        end function TRecombinationModel_xrayleigh
 
     subroutine TRecombinationModel_xe_Tm(this,a, xe, Tm)
     !Not required to implement, but may be able to optimize
