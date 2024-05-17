@@ -1,4 +1,4 @@
-    !Recombination module for CAMB, using RECFAST
+        !Recombination module for CAMB, using RECFAST
 
     !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     !C Integrator for Cosmic Recombination of Hydrogen and Helium,
@@ -230,7 +230,7 @@
         real(dl), private :: NNow, fHe
         real(dl), private :: zrec(Nz),xrec(Nz),dxrec(Nz), Tsrec(Nz) ,dTsrec(Nz), tmrec(Nz),dtmrec(Nz)
         ! andrea
-        real(dl) x_rayleigh_eff(Nz),dx_rayleigh_eff(Nz)
+        real(dl), private :: x_rayleigh_eff(Nz), dx_rayleigh_eff(Nz)
         ! andrea
         real(dl), private :: DeltaB,DeltaB_He,Lalpha,mu_H,mu_T
         real(dl), private :: HO, Tnow, fu
@@ -273,6 +273,7 @@
     procedure :: Validate => TRecfast_Validate
     procedure :: Init => TRecfast_init
     procedure :: x_e => TRecfast_xe
+    procedure :: x_rayleigh => TRecombination_rayleigh_eff !BB24
     procedure :: xe_Tm => TRecfast_xe_Tm !ionization fraction and baryon temperature
     procedure :: T_m => TRecfast_tm !baryon temperature
     procedure :: T_s => TRecfast_ts !Spin temperature
@@ -465,29 +466,31 @@
     end function TRecfast_xe
 
     ! andrea
-    function Recombination_rayleigh_eff(a)
+    function TRecombination_rayleigh_eff(this, a)
+        class(TRecfast) :: this
         real(dl), intent(in) :: a
-        real(dl) zst,z,az,bz,Recombination_rayleigh_eff
+        real(dl) zst,z,az,bz,TRecombination_rayleigh_eff
         integer ilo,ihi
 
         z=1/a-1
-        if (z.ge.zrec(1)) then
-          Recombination_rayleigh_eff=x_rayleigh_eff(1)
-        else
-         if (z.le.zrec(nz)) then
-          Recombination_rayleigh_eff=x_rayleigh_eff(nz)
-         else
-          zst=(zinitial-z)/delta_z
-          ihi= int(zst)
-          ilo = ihi+1
-          az=zst - int(zst)
-          bz=1-az     
-          Recombination_rayleigh_eff=az*x_rayleigh_eff(ilo)+bz*x_rayleigh_eff(ihi)+ &
-           ((az**3-az)*dx_rayleigh_eff(ilo)+(bz**3-bz)*dx_rayleigh_eff(ihi))/6._dl
-         endif
-        endif
-
-        end function Recombination_rayleigh_eff
+        associate(Calc => this%Calc)
+            if (z.ge.Calc%zrec(1)) then
+                TRecombination_rayleigh_eff=Calc%x_rayleigh_eff(1)
+            else
+                if (z.le.Calc%zrec(nz)) then
+                    TRecombination_rayleigh_eff=Calc%x_rayleigh_eff(nz)
+                else
+                    zst=(zinitial-z)/delta_z
+                    ihi= int(zst)
+                    ilo = ihi+1
+                    az=zst - int(zst)
+                    bz=1-az     
+                    TRecombination_rayleigh_eff=az*Calc%x_rayleigh_eff(ilo)+bz*Calc%x_rayleigh_eff(ihi)+ &
+                        ((az**3-az)2*Calc%dx_rayleigh_eff(ilo)+(bz**3-bz)*Calc%dx_rayleigh_eff(ihi))/6._dl
+                endif
+            endif
+    end associate
+    end function TRecombination_rayleigh_eff
     ! andrea
 
     subroutine TRecfast_xe_Tm(this,a, xe, Tm)
@@ -712,7 +715,7 @@
             Calc%zrec(i)=zend
             Calc%xrec(i)=x
             ! andrea
-            x_rayleigh_eff(i)=  1-x_H + HeRayleighFac*(1 - x_He)*Calc%fHe
+            Calc%x_rayleigh_eff(i)=  1-x_H + HeRayleighFac*(1 - x_He)*Calc%fHe
             ! andrea
             Calc%tmrec(i) = Tmat
 
@@ -740,7 +743,7 @@
 
         call spline_def(Calc%zrec,Calc%xrec,nz,Calc%dxrec)
         ! andrea
-        call spline_def(Calc%zrec,x_rayleigh_eff,Calc%tmrec,nz,Calc%dtmrec,dx_rayleigh_eff)
+        call spline_def(Calc%zrec,Calc%x_rayleigh_eff,Calc%tmrec,nz,Calc%dtmrec,Calc%dx_rayleigh_eff)
         ! andrea
         if (Calc%doTspin) then
             call spline_def(Calc%zrec,Calc%tsrec,nz,Calc%dtsrec)
