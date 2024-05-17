@@ -7,11 +7,19 @@
     use CAMB
     implicit none
     character(len=:), allocatable :: InputFile
+    
+    ! andrea
+    character(LEN=Ini_max_string_len) RayleighTerms
+    ! andrea
 
     InputFile = ''
     if (GetParamCount() /= 0)  InputFile = GetParam(1)
     if (InputFile == '') error stop 'No parameter input file'
-
+    ! andrea
+    RayleighTerms = Ini_read_String('rayleigh_pows')
+    rayleigh_diff = Ini_read_logical('rayleigh_diff',rayleigh_diff)
+    if (RayleighTerms/='') read(RayleighTerms,*) rayleigh_pows
+    ! andrea
     call CAMB_CommandLineRun(InputFile)
     deallocate(InputFile) ! Just so no memory leaks in valgrind
 

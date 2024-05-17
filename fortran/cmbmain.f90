@@ -82,6 +82,9 @@
     end type IntegrationVars
 
     real(dl), dimension(:,:), allocatable :: iCl_scalar, iCl_vector, iCl_tensor
+    ! andrea
+    real(dl), dimension(:,:,:,:,:), allocatable :: iCl_tensor_array
+    ! andrea
     ! Cls at the l values we actually compute,  iCl_xxx(l_index, Cl_type, initial_power_index)
 
     real(dl), dimension(:,:,:), allocatable :: iCl_Array
@@ -316,6 +319,10 @@
 
     if (CP%WantTensors .and. global_error_flag==0) then
         allocate(iCl_Tensor(State%CLdata%CTransTens%ls%nl,CT_Temp:CT_Cross), source=0._dl)
+        ! andrea
+        allocate(iCl_Tensor_array(CTransT%ls%l0,CT_Temp:CT_Cross,CP%InitPower%nn,num_cmb_freq,num_cmb_freq))
+        iCl_Tensor_array = 0
+        ! andrea
         call CalcTensCls(State%CLdata%CTransTens,GetInitPowerArrayTens)
         if (DebugMsgs .and. Feedbacklevel > 0) write (*,*) 'CalcTensCls'
     end if
@@ -330,7 +337,10 @@
     if (CP%WantScalars .and. allocated(iCl_Scalar)) deallocate(iCl_scalar)
     if (CP%WantScalars .and. allocated(iCl_Array)) deallocate(iCl_Array)
     if (CP%WantVectors .and. allocated(iCl_Vector)) deallocate(iCl_vector)
-    if (CP%WantTensors .and. allocated(iCl_Tensor)) deallocate(iCl_tensor)
+    if (CP%WantTensors .and. allocated(iCl_Tensor)) then
+        deallocate(iCl_tensor)
+        deallocate(iCl_Tensor_array)
+    end if
 
     if (global_error_flag/=0) return
 
@@ -752,7 +762,9 @@
         ThisSources%SourceNum= = ThisSources%SourceNum= + num_cmb_freq*2
         ! andrea
     else
-        ThisSources%SourceNum=3
+        ! andrea
+        ThisSources%SourceNum=3*(num_cmb_freq+1)
+        ! andrea
         ThisSources%NonCustomSourceNum = ThisSources%SourceNum
     end if
 
@@ -976,6 +988,9 @@
     type(EvolutionVars) EV
     real(dl) tau,tol1,tauend, taustart
     integer j,ind,itf
+    ! andrea
+    integer ix_off, f_i
+    ! andrea
     real(dl) c(24),w(EV%nvar,9), y(EV%nvar), sources(ThisSources%SourceNum)
 
     w=0
@@ -1049,6 +1064,8 @@
     real(dl) tau,tol1,tauend, taustart
     integer j,ind
     real(dl) c(24),wt(EV%nvart,9), yt(EV%nvart)
+    real(dl) outT(nscatter),outE(nscatter),outB(nscatter)
+    integer f_i
 
     call initialt(EV,yt, taustart)
 
@@ -1066,6 +1083,10 @@
 
             call outputt(EV,yt,EV%nvart,tau,ThisSources%LinearSrc(EV%q_ix,CT_Temp,j),&
                 ThisSources%LinearSrc(EV%q_ix,CT_E,j),ThisSources%LinearSrc(EV%q_ix,CT_B,j))
+            call outputt(EV,yt,EV%nvart,j,tau,outT,outE,outB)
+            do f_i=1,nscatter
+                Src(EV%q_ix,1+(f_i-1)*3:3+(f_i-1)*3,j) = [outT(f_i),outE(f_i),outB(f_i)]
+            end do
         end if
     end do
 
@@ -1285,12 +1306,11 @@
 
         if (qmax_int > k_max_0) then
             max_k_dk = max(3000, 2*maximum_l)/State%tau0
-
             call ThisCT%q%Add_delta(k_max_0, min(qmax_int, max_k_dk), dk)
             if (qmax_int > max_k_dk) then
-                !This allows inclusion of high k modes for computing BB lensed spectrum accurately
-                !without taking ages to compute.
-                call ThisCT%q%Add_delta(max_k_dk, qmax_int, dk2)
+            !This allows inclusion of high k modes for computing BB lensed spectrum accurately
+            !without taking ages to compute.
+            call ThisCT%q%Add_delta(max_k_dk, qmax_int, dk2)
             end if
         end if
 
@@ -1499,6 +1519,7 @@
             tmin = State%TimeSteps%points(2)
         else
             xlmax1=80*ThisCT%ls%l(j)*BessIntBoost
+            if (num_cmb_freq>0 .and. ThisCT%ls%l(j) <200) xlmax1=xlmax1*8
             if (State%num_redshiftwindows>0 .and. CP%WantScalars) then
                 xlmax1=80*ThisCT%ls%l(j)*8*BessIntBoost !Have to be careful if sharp spikes due to late time sources
             end if
@@ -2478,7 +2499,11 @@
     real(dl) apowert,  measure
     real(dl) ctnorm,dbletmp
     real(dl) pows(CTrans%q%npoints)
+    ! andrea
     real(dl)  ks(CTrans%q%npoints),measures(CTrans%q%npoints)
+    real(dl) Delta1, Delta2
+    integer f1,f2
+    ! andrea
 
     !For tensors we want Integral dnu/nu (nu^2-3)/(nu^2-1) Delta_l_k^2 P(k) for State%closed
 
@@ -2509,15 +2534,26 @@
 
                 iCl_tensor(j,CT_cross ) = iCl_tensor(j,CT_cross) &
                     +apowert*CTrans%Delta_p_l_k(CT_Temp,j,q_ix)*CTrans%Delta_p_l_k(CT_E,j,q_ix)*measure
+                do f1=1,num_cmb_freq
+                    do f2=1,num_cmb_freq
+                    iCl_tensor_array(j,CT_Temp:CT_B,in,f1,f2) = iCl_tensor_array(j,CT_Temp:CT_B,in,f1,f2) + &
+                         apowert*CTrans%Delta_p_l_k(CT_Temp+(f1)*3:CT_B+(f1)*3,j,q_ix)*CTrans%Delta_p_l_k(CT_Temp+(f2)*3:CT_B+(f2)*3,j,q_ix)*measure
+                    iCl_tensor_array(j,CT_cross, in,f1,f2) = iCl_tensor_array(j,CT_cross, in,f1,f2 ) &
+                    +apowert*CTrans%Delta_p_l_k(CT_Temp+f1*3,j,q_ix)*CTrans%Delta_p_l_k(CT_E+f2*3,j,q_ix)*measure
+                    end do
+                end do
             end if
         end do
 
         ctnorm=(CTrans%ls%l(j)*CTrans%ls%l(j)-1)*real((CTrans%ls%l(j)+2)*CTrans%ls%l(j),dl)
         dbletmp=(CTrans%ls%l(j)*(CTrans%ls%l(j)+1))/OutputDenominator*const_pi/4
         iCl_tensor(j, CT_Temp) = iCl_tensor(j, CT_Temp)*dbletmp*ctnorm
+        iCl_tensor_array(j, CT_Temp, in,:,:) = iCl_tensor_array(j, CT_Temp, in,:,:)*dbletmp*ctnorm
         if (CTrans%ls%l(j)==1) dbletmp=0
-        iCl_tensor(j, CT_E:CT_B) = iCl_tensor(j, CT_E:CT_B)*dbletmp
-        iCl_tensor(j, CT_Cross)  = iCl_tensor(j, CT_Cross)*dbletmp*sqrt(ctnorm)
+            iCl_tensor(j, CT_E:CT_B) = iCl_tensor(j, CT_E:CT_B)*dbletmp
+            iCl_tensor(j, CT_Cross)  = iCl_tensor(j, CT_Cross)*dbletmp*sqrt(ctnorm)
+            iCl_tensor_array(j, CT_E:CT_B, in,:,:) = iCl_tensor_array(j, CT_E:CT_B, in,:,:)*dbletmp
+            iCl_tensor_array(j, CT_Cross, in,:,:)  = iCl_tensor_array(j, CT_Cross, in,:,:)*dbletmp*sqrt(ctnorm)
     end do
     !$OMP END PARALLEL DO
 
@@ -2574,6 +2610,9 @@
     implicit none
     integer i,j
     integer, dimension(2,2), parameter :: ind = reshape( (/ 1,3,3,2 /), shape(ind))
+    ! andrea
+    integer f1,f2
+    ! andrea
     !use verbose form above for gfortran consistency  [[1,3],[3,2]]
 
     !Note using log interpolation is worse
@@ -2594,7 +2633,7 @@
                             State%CLData%Cl_scalar_array(:,i,j) = State%CLData%Cl_scalar(:, ind(i,j))
                         else
                             ! andrea
-                            if (i<=3+num_cmb_freq*2 .and. j<=3+num_cmb_freq*2 .and. i>3 .and. j>3) then
+                            if (i<=3+num_cmb_freq*2 .and. j<=3+num_cmb_freq*2 .and. i>3 .and. j>3 .and. (i<=5 .and. j<=5 .or. .not. rayleigh_diff)) then
                                 call InterpolateClArrTemplated(CTransS%ls,iCl_array(1,i,j,in),Cl_scalar_array(lmin, in, i,j), &
                                 CTransS%ls%l0,ind(1+mod(i-4,2),1+mod(j-4,2)))
 
@@ -2624,6 +2663,16 @@
             do i = CT_Temp, CT_Cross
                 call ls%InterpolateClArr(iCl_tensor(1,i),State%CLData%Cl_tensor(ls%lmin, i))
             end do
+            ! andrea
+            allocate(Cl_tensor_freqs(lmin:CP%Max_l_tensor,CP%InitPower%nn,1:4,num_cmb_freq,num_cmb_freq))
+                do f1=1,num_cmb_freq
+                do f2=1,num_cmb_freq
+                do i = CT_Temp, CT_Cross
+                    call InterpolateClArr(CTransT%ls,iCl_tensor_array(1,i,in,f1,f2),Cl_tensor_freqs(lmin, in, i, f1,f2), CTransT%ls%l0)
+                end do
+                end do
+                end do
+            ! andrea
         end associate
     end if
 

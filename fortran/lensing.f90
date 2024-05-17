@@ -291,252 +291,255 @@
         end if
 
         lens_contrib=0
+        !andrea 
+        if (Alens>1e-5) then
 
-        !$OMP PARALLEL DO DEFAULT(PRIVATE),  &
-        !$OMP SHARED(lfacs,lfacs2,lrootfacs,Cphil3,CTT,CTE,CEE,lens_contrib,theta_cut), &
-        !$OMP SHARED(lmin, lmax,dtheta,CL,CLout,roots, npoints,interp_fac), &
-        !$OMP SHARED(jmax,ls,xl,short_integral_range,apodize_point_width)
-        do i=1,npoints-1
+            !$OMP PARALLEL DO DEFAULT(PRIVATE),  &
+            !$OMP SHARED(lfacs,lfacs2,lrootfacs,Cphil3,CTT,CTE,CEE,lens_contrib,theta_cut), &
+            !$OMP SHARED(lmin, lmax,dtheta,CL,CLout,roots, npoints,interp_fac), &
+            !$OMP SHARED(jmax,ls,xl,short_integral_range,apodize_point_width)
+            do i=1,npoints-1
 
-            theta = i * dtheta
-            x = cos(theta)
-            sinth = sin(theta)
-            halfsinth = sinth/2
+                theta = i * dtheta
+                x = cos(theta)
+                sinth = sin(theta)
+                halfsinth = sinth/2
 
-            pmm=1
-            pmmp1=x
+                pmm=1
+                pmmp1=x
 
-            Cg2=0
-            sigmasq=0
-            if (lmin==1) then
-                d_11(1) = cos(theta/2)**2
-                d_m11(1) = sin(theta/2)**2
-                sigmasq = sigmasq  +  (1-d_11(1))*Cphil3(lmin)
-                Cg2 = Cg2  + d_m11(1)*Cphil3(lmin)
-                P(1) = x
-                d_22(1)=0
-                d_2m2(1)=0
-                d_20(1)=0
-            end if
-            do l=2,lmax
-
-                P(l)= ((2*l-1)* x *pmmp1 - (l-1)*Pmm)/ l
-                dP(l) = l*(pmmp1-x*P(l))/sinth**2
-                Pmm=pmmp1
-                pmmp1=P(l)
-                llp1 = lfacs(l)
-
-                fac1 = (1-x)
-                fac2 = (1+x)
-                fac = fac1/fac2
-
-                d_11(l) =  fac1*dP(l)/llp1 + P(l)
-                d_m11(l) = fac2*dP(l)/llp1 - P(l)
-
-                sigmasq = sigmasq  +  (1-d_11(l))*Cphil3(l)
-                Cg2 = Cg2  + d_m11(l)*Cphil3(l)
-
-                d_22(l) = ( ((4*x-8)/fac2 + llp1)*P(l) &
-                    + 4*fac*( fac2 + (x - 2)/llp1)*dP(l) )/ lfacs2(l)
-
-                !For small theta use Taylor expansion for better stability (thanks Pavel Motloch)
-                if (theta > theta_cut(l)) then
-                    d_2m2(l) = ( (llp1- (4*x+8)/fac1) *P(l) &
-                        +4/fac*( -fac1 + (x+2)/llp1) *dP(l) )/lfacs2(l)
-                else
-                    d_2m2(l) = lfacs(l)*lfacs2(l)*theta**4*(1._dl/384._dl &
-                        - (3._dl*lfacs(l) - 8._dl)/23040._dl*theta**2)
-                endif
-
-                d_20(l) = (2*x*dP(l) - llp1*P(l) ) / lrootfacs(l)
-
-            end do
-
-            do j=1,jmax
-                l =ls(j)
-
-                fac1 = (1-x)
-                fac2 = (1+x)
-                llp1 = lfacs(l)
-
-                rootllp1 = roots(l)*roots(l+1)
-                rootfac1 = roots(l+2)*roots(l-1)
-                rootfac2 = roots(l+3)*roots(l-2)
-
-                llp1=lfacs(l)
-                dm11=d_m11(l)
-                d11=d_11(l)
-                if (l<2) then
-                    d2m2=0
-                    d22=0
-                    d20=0
-                    d1m2 = 0
-                    d12 =  0
-                else
-                    d2m2=d_2m2(l)
-                    d22=d_22(l)
-                    d20=d_20(l)
-                    d1m2 = sinth/rootfac1*(dP(l) -2/fac1*dm11)
-                    d12 =  sinth/rootfac1*(dP(l) -2/fac2*d11)
+                Cg2=0
+                sigmasq=0
+                if (lmin==1) then
+                    d_11(1) = cos(theta/2)**2
+                    d_m11(1) = sin(theta/2)**2
+                    sigmasq = sigmasq  +  (1-d_11(1))*Cphil3(lmin)
+                    Cg2 = Cg2  + d_m11(1)*Cphil3(lmin)
+                    P(1) = x
+                    d_22(1)=0
+                    d_2m2(1)=0
+                    d_20(1)=0
                 end if
-                if (l<3) then
-                    d1m3=0
-                    d2m3=0
-                    d3m3=0
-                    d13 =0
-                    d23 =0
-                    d33 =0
-                else
-                    sinfac=4/sinth
-                    d1m3 = (-(x+0.5_dl)*d1m2*sinfac - lfacs2(l)*dm11/rootfac1 )/rootfac2
-                    d2m3 = (-fac2*d2m2*sinfac - rootfac1*d1m2)/rootfac2
-                    d3m3 = (-(x+1.5_dl)*d2m3*sinfac - rootfac1*d1m3)/rootfac2
-                    d13  =  ((x-0.5_dl)*d12*sinfac - lfacs2(l)*d11/rootfac1 ) /rootfac2
-                    d23  = (-fac1*d22*sinfac + rootfac1*d12 ) / rootfac2
-                    d33  = (-(x-1.5_dl)*d23*sinfac - rootfac1*d13)/rootfac2
-                end if
-                if (l<4) then
-                    d04=0
-                    d2m4=0
-                    d4m4=0
-                    rootfac3=0
-                else
-                    rootfac3=roots(l-3)*roots(l+4)
-                    d04=( (-llp1 + (18*x**2 + 6)/sinth**2 )*d20  -&
-                        6*x*lfacs2(l)*dP(l)/lrootfacs(l) ) / (rootfac2*rootfac3)
-                    d2m4= (-(6*x+4)*d2m3/sinth - rootfac2*d2m2 ) / rootfac3
-                    d4m4 = (-7/5._dl*(llp1-6)*d2m2 + &
-                        12/5._dl*( -llp1+(9*x+26)/fac1)*d3m3 ) / (llp1-12)
-                end if
+                do l=2,lmax
 
-                !Non perturbative isotropic integrals
-                !these are approx, but extremely good approximations
-                X000 = exp(-llp1*sigmasq/4)
-                if (approx) then
+                    P(l)= ((2*l-1)* x *pmmp1 - (l-1)*Pmm)/ l
+                    dP(l) = l*(pmmp1-x*P(l))/sinth**2
+                    Pmm=pmmp1
+                    pmmp1=P(l)
+                    llp1 = lfacs(l)
 
-                    X022 = X000
-                    X220 = rootllp1**2/4*X000
-                    X121 = -0.5_dl*rootllp1*X000
-                    X132 = -0.5_dl*rootllp1*X000
-                    X242 = 0.25_dl*rootllp1**2*X022
+                    fac1 = (1-x)
+                    fac2 = (1+x)
+                    fac = fac1/fac2
 
-                    dX000 = -llp1/4*X000
-                    dX022 = -llp1/4*X022
-                else
-                    X022 = X000*(1+sigmasq)   !exp(-(llp1-4)*sigmasq/4)
-                    X220 = lrootfacs(l)/4*X000
-                    X121 = -0.5_dl*rootfac1*X000
-                    X132 = -0.5_dl*rootfac2*X000
-                    X242 = 0.25_dl*rootfac2*rootfac3*X022
+                    d_11(l) =  fac1*dP(l)/llp1 + P(l)
+                    d_m11(l) = fac2*dP(l)/llp1 - P(l)
 
-                    dX000 = -llp1/4*X000
-                    dX022 = (1-llp1/4)*X022
-                end if
-                !second order
-                !TT
-                fac1 = dX000**2
-                fac3 = X220**2
-                Cg2sq = Cg2**2
+                    sigmasq = sigmasq  +  (1-d_11(l))*Cphil3(l)
+                    Cg2 = Cg2  + d_m11(l)*Cphil3(l)
 
-                !Here we drop terms in Cgt which are down by powers of l
-                !Approx good to 1e-4 level
-                fac = ( (X000**2-1) + Cg2sq*fac1)*P(l)+ Cg2sq*fac3*d2m2 &
-                    + 8/llp1* fac1*Cg2*dm11
+                    d_22(l) = ( ((4*x-8)/fac2 + llp1)*P(l) &
+                        + 4*fac*( fac2 + (x - 2)/llp1)*dP(l) )/ lfacs2(l)
 
-                corrcontribs(j,1)=  CTT(l) * fac
+                    !For small theta use Taylor expansion for better stability (thanks Pavel Motloch)
+                    if (theta > theta_cut(l)) then
+                        d_2m2(l) = ( (llp1- (4*x+8)/fac1) *P(l) &
+                            +4/fac*( -fac1 + (x+2)/llp1) *dP(l) )/lfacs2(l)
+                    else
+                        d_2m2(l) = lfacs(l)*lfacs2(l)*theta**4*(1._dl/384._dl &
+                            - (3._dl*lfacs(l) - 8._dl)/23040._dl*theta**2)
+                    endif
 
-                fac2=(Cg2*dX022)**2+(X022**2-1)
-                !Q+U
-                fac = 2*Cg2*X121*X132*d13 + fac2*d22 +Cg2sq*X242*X220*d04
+                    d_20(l) = (2*x*dP(l) - llp1*P(l) ) / lrootfacs(l)
 
-                corrcontribs(j,2)= CEE(l) * fac
-
-                !Q-U
-                fac = ( fac3*P(l) + X242**2*d4m4)*Cg2sq/2 &
-                    + Cg2*(X121**2*dm11+ X132**2*d3m3) + fac2*d2m2
-
-                corrcontribs(j,3)= CEE(l) * fac
-
-                !TE
-                fac = (X000*X022-1)*d20+ &
-                    2*dX000*Cg2*(X121*d11 + X132*d1m3)/rootllp1 &
-                    + Cg2sq*(X220/2*d2m4*X242 +( fac3/2 + dX022*dX000)*d20)
-
-                corrcontribs(j,4)= CTE(l) * fac
-
-            end do
-
-            do j=1,4
-                corr(j) = sum(corrcontribs(1:14,j))+interp_fac*sum(corrcontribs(15:jmax,j))
-            end do
-
-            !if (short_integral_range .and. i>npoints-20) &
-            !        corr=corr*exp(-(i-npoints+20)**2/150.0) !taper the end to help prevent ringing
-
-            if (short_integral_range .and. i>npoints-apodize_point_width*3) &
-                corr=corr*exp(-(i-npoints+apodize_point_width*3)**2/real(2*apodize_point_width**2))
-            !taper the end to help prevent ringing
-
-
-            !Interpolate contributions
-            !Increasing interp_fac and using this seems to be slower than above
-            if (.false.) then
-                if (abs(sum(corrcontribs(1:jmax,1)))>1e-11) print *,i,sum(corrcontribs(1:jmax,1))
-                do j=1,4
-                    call spline_def(xl,corrcontribs(:,j),jmax,ddcontribs(:,j))
                 end do
-                corr=0
-                llo=1
-                do l=lmin,lmax
-                    if ((l > ls(llo+1)).and.(llo < jmax)) then
-                        llo=llo+1
+
+                do j=1,jmax
+                    l =ls(j)
+
+                    fac1 = (1-x)
+                    fac2 = (1+x)
+                    llp1 = lfacs(l)
+
+                    rootllp1 = roots(l)*roots(l+1)
+                    rootfac1 = roots(l+2)*roots(l-1)
+                    rootfac2 = roots(l+3)*roots(l-2)
+
+                    llp1=lfacs(l)
+                    dm11=d_m11(l)
+                    d11=d_11(l)
+                    if (l<2) then
+                        d2m2=0
+                        d22=0
+                        d20=0
+                        d1m2 = 0
+                        d12 =  0
+                    else
+                        d2m2=d_2m2(l)
+                        d22=d_22(l)
+                        d20=d_20(l)
+                        d1m2 = sinth/rootfac1*(dP(l) -2/fac1*dm11)
+                        d12 =  sinth/rootfac1*(dP(l) -2/fac2*d11)
                     end if
-                    lhi=llo+1
-                    ho=ls(lhi)-ls(llo)
-                    a0=(ls(lhi)-l)/ho
-                    b0=(l-ls(llo))/ho
-                    fac1 = ho**2/6
-                    fac2 = (b0**3-b0)*fac1
-                    fac1 = (a0**3-a0)*fac1
+                    if (l<3) then
+                        d1m3=0
+                        d2m3=0
+                        d3m3=0
+                        d13 =0
+                        d23 =0
+                        d33 =0
+                    else
+                        sinfac=4/sinth
+                        d1m3 = (-(x+0.5_dl)*d1m2*sinfac - lfacs2(l)*dm11/rootfac1 )/rootfac2
+                        d2m3 = (-fac2*d2m2*sinfac - rootfac1*d1m2)/rootfac2
+                        d3m3 = (-(x+1.5_dl)*d2m3*sinfac - rootfac1*d1m3)/rootfac2
+                        d13  =  ((x-0.5_dl)*d12*sinfac - lfacs2(l)*d11/rootfac1 ) /rootfac2
+                        d23  = (-fac1*d22*sinfac + rootfac1*d12 ) / rootfac2
+                        d33  = (-(x-1.5_dl)*d23*sinfac - rootfac1*d13)/rootfac2
+                    end if
+                    if (l<4) then
+                        d04=0
+                        d2m4=0
+                        d4m4=0
+                        rootfac3=0
+                    else
+                        rootfac3=roots(l-3)*roots(l+4)
+                        d04=( (-llp1 + (18*x**2 + 6)/sinth**2 )*d20  -&
+                            6*x*lfacs2(l)*dP(l)/lrootfacs(l) ) / (rootfac2*rootfac3)
+                        d2m4= (-(6*x+4)*d2m3/sinth - rootfac2*d2m2 ) / rootfac3
+                        d4m4 = (-7/5._dl*(llp1-6)*d2m2 + &
+                            12/5._dl*( -llp1+(9*x+26)/fac1)*d3m3 ) / (llp1-12)
+                    end if
 
-                    corr(1) = Corr(1)+ a0*corrcontribs(llo,1)+ b0*corrcontribs(lhi,1)+ &
-                        fac1* ddcontribs(llo,1) +fac2*ddcontribs(lhi,1)
-                    corr(2) = Corr(2)+ a0*corrcontribs(llo,2)+ b0*corrcontribs(lhi,2)+ &
-                        fac1* ddcontribs(llo,2) +fac2*ddcontribs(lhi,2)
-                    corr(3) = Corr(3)+ a0*corrcontribs(llo,3)+ b0*corrcontribs(lhi,3)+ &
-                        fac1* ddcontribs(llo,3) +fac2*ddcontribs(lhi,3)
-                    corr(4) = Corr(4)+ a0*corrcontribs(llo,4)+ b0*corrcontribs(lhi,4)+ &
-                        fac1* ddcontribs(llo,4) +fac2*ddcontribs(lhi,4)
+                    !Non perturbative isotropic integrals
+                    !these are approx, but extremely good approximations
+                    X000 = exp(-llp1*sigmasq/4)
+                    if (approx) then
+
+                        X022 = X000
+                        X220 = rootllp1**2/4*X000
+                        X121 = -0.5_dl*rootllp1*X000
+                        X132 = -0.5_dl*rootllp1*X000
+                        X242 = 0.25_dl*rootllp1**2*X022
+
+                        dX000 = -llp1/4*X000
+                        dX022 = -llp1/4*X022
+                    else
+                        X022 = X000*(1+sigmasq)   !exp(-(llp1-4)*sigmasq/4)
+                        X220 = lrootfacs(l)/4*X000
+                        X121 = -0.5_dl*rootfac1*X000
+                        X132 = -0.5_dl*rootfac2*X000
+                        X242 = 0.25_dl*rootfac2*rootfac3*X022
+
+                        dX000 = -llp1/4*X000
+                        dX022 = (1-llp1/4)*X022
+                    end if
+                    !second order
+                    !TT
+                    fac1 = dX000**2
+                    fac3 = X220**2
+                    Cg2sq = Cg2**2
+
+                    !Here we drop terms in Cgt which are down by powers of l
+                    !Approx good to 1e-4 level
+                    fac = ( (X000**2-1) + Cg2sq*fac1)*P(l)+ Cg2sq*fac3*d2m2 &
+                        + 8/llp1* fac1*Cg2*dm11
+
+                    corrcontribs(j,1)=  CTT(l) * fac
+
+                    fac2=(Cg2*dX022)**2+(X022**2-1)
+                    !Q+U
+                    fac = 2*Cg2*X121*X132*d13 + fac2*d22 +Cg2sq*X242*X220*d04
+
+                    corrcontribs(j,2)= CEE(l) * fac
+
+                    !Q-U
+                    fac = ( fac3*P(l) + X242**2*d4m4)*Cg2sq/2 &
+                        + Cg2*(X121**2*dm11+ X132**2*d3m3) + fac2*d2m2
+
+                    corrcontribs(j,3)= CEE(l) * fac
+
+                    !TE
+                    fac = (X000*X022-1)*d20+ &
+                        2*dX000*Cg2*(X121*d11 + X132*d1m3)/rootllp1 &
+                        + Cg2sq*(X220/2*d2m4*X242 +( fac3/2 + dX022*dX000)*d20)
+
+                    corrcontribs(j,4)= CTE(l) * fac
 
                 end do
-            end if
 
-            !$  thread_ix = OMP_GET_THREAD_NUM()+1
+                do j=1,4
+                    corr(j) = sum(corrcontribs(1:14,j))+interp_fac*sum(corrcontribs(15:jmax,j))
+                end do
 
-            do l=lmin, CLout%lmax_lensed
-                !theta factors were put in earlier (already in corr)
+                !if (short_integral_range .and. i>npoints-20) &
+                !        corr=corr*exp(-(i-npoints+20)**2/150.0) !taper the end to help prevent ringing
 
-                lens_contrib(C_Temp, l, thread_ix)= lens_contrib(C_Temp,l, thread_ix) + &
-                    corr(1)*P(l)*sinth
-
-                T2 = corr(2)* d_22(l)
-                T4 = corr(3)* d_2m2(l)
+                if (short_integral_range .and. i>npoints-apodize_point_width*3) &
+                    corr=corr*exp(-(i-npoints+apodize_point_width*3)**2/real(2*apodize_point_width**2))
+                !taper the end to help prevent ringing
 
 
-                lens_contrib(CT_E, l, thread_ix)= lens_contrib(CT_E,l, thread_ix) + &
-                    (T2+T4)*halfsinth
-                lens_contrib(CT_B, l, thread_ix)= lens_contrib(CT_B,l, thread_ix) + &
-                    (T2-T4)*halfsinth
+                !Interpolate contributions
+                !Increasing interp_fac and using this seems to be slower than above
+                if (.false.) then
+                    if (abs(sum(corrcontribs(1:jmax,1)))>1e-11) print *,i,sum(corrcontribs(1:jmax,1))
+                    do j=1,4
+                        call spline_def(xl,corrcontribs(:,j),jmax,ddcontribs(:,j))
+                    end do
+                    corr=0
+                    llo=1
+                    do l=lmin,lmax
+                        if ((l > ls(llo+1)).and.(llo < jmax)) then
+                            llo=llo+1
+                        end if
+                        lhi=llo+1
+                        ho=ls(lhi)-ls(llo)
+                        a0=(ls(lhi)-l)/ho
+                        b0=(l-ls(llo))/ho
+                        fac1 = ho**2/6
+                        fac2 = (b0**3-b0)*fac1
+                        fac1 = (a0**3-a0)*fac1
 
-                lens_contrib(CT_Cross, l, thread_ix)= lens_contrib(CT_Cross,l, thread_ix) + &
-                    corr(4)*d_20(l)*sinth
+                        corr(1) = Corr(1)+ a0*corrcontribs(llo,1)+ b0*corrcontribs(lhi,1)+ &
+                            fac1* ddcontribs(llo,1) +fac2*ddcontribs(lhi,1)
+                        corr(2) = Corr(2)+ a0*corrcontribs(llo,2)+ b0*corrcontribs(lhi,2)+ &
+                            fac1* ddcontribs(llo,2) +fac2*ddcontribs(lhi,2)
+                        corr(3) = Corr(3)+ a0*corrcontribs(llo,3)+ b0*corrcontribs(lhi,3)+ &
+                            fac1* ddcontribs(llo,3) +fac2*ddcontribs(lhi,3)
+                        corr(4) = Corr(4)+ a0*corrcontribs(llo,4)+ b0*corrcontribs(lhi,4)+ &
+                            fac1* ddcontribs(llo,4) +fac2*ddcontribs(lhi,4)
+
+                    end do
+                end if
+
+                !$  thread_ix = OMP_GET_THREAD_NUM()+1
+
+                do l=lmin, CLout%lmax_lensed
+                    !theta factors were put in earlier (already in corr)
+
+                    lens_contrib(C_Temp, l, thread_ix)= lens_contrib(C_Temp,l, thread_ix) + &
+                        corr(1)*P(l)*sinth
+
+                    T2 = corr(2)* d_22(l)
+                    T4 = corr(3)* d_2m2(l)
+
+
+                    lens_contrib(CT_E, l, thread_ix)= lens_contrib(CT_E,l, thread_ix) + &
+                        (T2+T4)*halfsinth
+                    lens_contrib(CT_B, l, thread_ix)= lens_contrib(CT_B,l, thread_ix) + &
+                        (T2-T4)*halfsinth
+
+                    lens_contrib(CT_Cross, l, thread_ix)= lens_contrib(CT_Cross,l, thread_ix) + &
+                        corr(4)*d_20(l)*sinth
+
+                end do
 
             end do
-
-        end do
         !$OMP END PARALLEL DO
-
-        ! andrea
+    end if
+    ! andrea
+    ! andrea
         if (f_i_1>1 .and. f_i_2>1) then
             do l=lmin, lmax_lensed
             !sign from d(cos theta) = -sin theta dtheta

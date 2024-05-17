@@ -229,8 +229,10 @@
         real(dl) :: Recombination_saha_z !Redshift at which saha OK
         real(dl), private :: NNow, fHe
         real(dl), private :: zrec(Nz),xrec(Nz),dxrec(Nz), Tsrec(Nz) ,dTsrec(Nz), tmrec(Nz),dtmrec(Nz)
+        ! andrea
+        real(dl) x_rayleigh_eff(Nz),dx_rayleigh_eff(Nz)
+        ! andrea
         real(dl), private :: DeltaB,DeltaB_He,Lalpha,mu_H,mu_T
-
         real(dl), private :: HO, Tnow, fu
         integer, private :: n_eq = 3
         logical :: doTspin = .false.
@@ -313,6 +315,10 @@
     real(dl), parameter :: sigma_He_2Pt  = 1.484872D-22  !Hummer & Storey (1998)
     !    Atomic data for HeI
 
+    ! andrea
+    real(dl), parameter :: HeRayleighFac = 0.1_dl !Rayleigh neutral He scattering cross section as ratio to H 
+    ! andrea
+
     !       Set up some constants so they don't have to be calculated later
     real(dl), parameter :: Lalpha = 1.d0/L_H_alpha
     real(dl), parameter :: Lalpha_He = 1.d0/L_He_2p
@@ -337,8 +343,10 @@
     real(dl), parameter :: H_frac = 1D-3
 
     procedure(obj_function), private :: dtauda
-
-    public TRecfast,  CB1
+    
+    ! andrea
+    public TRecfast,  CB1, Recombination_rayleigh_eff
+    ! andrea 
 
     contains
 
@@ -455,6 +463,32 @@
         endif
     end associate
     end function TRecfast_xe
+
+    ! andrea
+    function Recombination_rayleigh_eff(a)
+        real(dl), intent(in) :: a
+        real(dl) zst,z,az,bz,Recombination_rayleigh_eff
+        integer ilo,ihi
+
+        z=1/a-1
+        if (z.ge.zrec(1)) then
+          Recombination_rayleigh_eff=x_rayleigh_eff(1)
+        else
+         if (z.le.zrec(nz)) then
+          Recombination_rayleigh_eff=x_rayleigh_eff(nz)
+         else
+          zst=(zinitial-z)/delta_z
+          ihi= int(zst)
+          ilo = ihi+1
+          az=zst - int(zst)
+          bz=1-az     
+          Recombination_rayleigh_eff=az*x_rayleigh_eff(ilo)+bz*x_rayleigh_eff(ihi)+ &
+           ((az**3-az)*dx_rayleigh_eff(ilo)+(bz**3-bz)*dx_rayleigh_eff(ihi))/6._dl
+         endif
+        endif
+
+        end function Recombination_rayleigh_eff
+    ! andrea
 
     subroutine TRecfast_xe_Tm(this,a, xe, Tm)
     class(TRecfast) :: this
@@ -677,6 +711,9 @@
 
             Calc%zrec(i)=zend
             Calc%xrec(i)=x
+            ! andrea
+            x_rayleigh_eff(i)=  1-x_H + HeRayleighFac*(1 - x_He)*Calc%fHe
+            ! andrea
             Calc%tmrec(i) = Tmat
 
 
@@ -702,7 +739,9 @@
         end do
 
         call spline_def(Calc%zrec,Calc%xrec,nz,Calc%dxrec)
-        call spline_def(Calc%zrec,Calc%tmrec,nz,Calc%dtmrec)
+        ! andrea
+        call spline_def(Calc%zrec,x_rayleigh_eff,Calc%tmrec,nz,Calc%dtmrec,dx_rayleigh_eff)
+        ! andrea
         if (Calc%doTspin) then
             call spline_def(Calc%zrec,Calc%tsrec,nz,Calc%dtsrec)
         end if
