@@ -322,8 +322,9 @@
     end interface
 
     INTERFACE
-    FUNCTION recombination_rayleigh_eff(i)
-    integer, INTENT(IN) :: i
+    FUNCTION recombination_rayleigh_eff(a)
+    use precision
+    real(dl), INTENT(IN) :: a
     END FUNCTION recombination_rayleigh_eff
     END INTERFACE
     ! andrea
@@ -2169,9 +2170,9 @@
             end if
             this%xe(i) = CP%Reion%x_e(1/a-1, tau, this%xe(ncount))
             if (CP%Accuracy%AccurateReionization .and. CP%WantDerivedParameters) then
-                ! andrea
-                this%dotmu(i,1)=(total_scattering_eff(i) - this%xe(i))*State%akthom/a2
-                ! ancrea
+                ! and
+                this%dotmu(i,1)=(total_scattering_eff(a) - this%xe(i))*State%akthom/a2
+                ! and
 
                 if (last_dotmu /=0) then
                     ! andrea solo change
@@ -2181,7 +2182,7 @@
                 ! 
             end if
         else
-            this%xe(i)=total_scattering_eff(i)
+            this%xe(i)=total_scattering_eff(a)
         end if
 
         !  approximate Baryon sound speed squared (over c**2).
@@ -2226,7 +2227,9 @@
     ! 
     allocate(opts(nthermo))
     call dotmuSp%IntegralArray(opts)
-    sdotmu = opts(nthermo:1:-1)
+    ! and solo change
+    sdotmu(:,1) = opts(nthermo:1:-1)
+    ! and solo change
     do j1=1,nthermo
         ! andrea change
         if (sdotmu(j1,1)< -69) then
@@ -2263,9 +2266,9 @@
             if (CP%Transfer%PK_Redshifts(RW_i) < 1e-3) then
                 State%optical_depths_for21cm(RW_i) = 0 !zero may not be set correctly in transfer_ix
             else
-                ! andrea s
-                State%optical_depths_for21cm(RW_i) =  -sdotmu(transfer_ix(RW_i),:)
-                ! andrea
+                ! and
+                State%optical_depths_for21cm(RW_i) =  -sdotmu(transfer_ix(RW_i),1)
+                ! and
             end if
         end do
     end if
