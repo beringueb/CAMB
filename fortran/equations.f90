@@ -2,7 +2,10 @@
 
     ! Background evolution, return d tau/ d a, where tau is the conformal time
     function dtauda(this,a)
-    use results
+    !use results
+    !and
+    use Recombination
+    !and
     use DarkEnergyInterface
     implicit none
     class(CAMBdata) :: this
@@ -29,7 +32,10 @@
 
     module GaugeInterface
     use precision
-    use results
+    !use results
+    !and
+    use Recombination
+    !and
     use MassiveNu
     use DarkEnergyInterface
     use Transfer

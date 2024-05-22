@@ -1,7 +1,10 @@
 
     module DarkEnergyFluid
     use DarkEnergyInterface
-    use results
+    !use results
+    !and
+    use Recombination
+    !and
     use constants
     use classes
     implicit none

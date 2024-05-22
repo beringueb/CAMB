@@ -8,7 +8,10 @@
 
     module SpherBessels
     use Precision
-    use results
+    !use results
+    ! and
+    use Recombination
+    ! and
     use RangeUtils
     use MpiUtils
     use splines
@@ -1193,8 +1196,8 @@
         ak=sqpii/t
         z=1._dl/zeta
         zz=z*z
-        uf=1._dl+zz*polevl(zz,AFN,8)/p1evl(zz,AFD,9)
-        ug=z*polevl(zz,AGN,10)/p1evl(zz,AGD,10)
+        uf=1._dl+zz*polevl2(zz,AFN,8)/p1evl(zz,AFD,9)
+        ug=z*polevl2(zz,AGN,10)/p1evl(zz,AGD,10)
         theta=zeta+0.25d0*PI
         f=sin(theta)
         g=cos(theta)
@@ -1211,7 +1214,7 @@
         t=sqrt(t)
         ak=2._dl*t*g
         z=1._dl/zeta
-        f=polevl(z,AN,7)/polevl(z,AD,7)
+        f=polevl2(z,AN,7)/polevl2(z,AD,7)
         airy_ai=sqpii*f/ak
         return
     endif
@@ -1280,9 +1283,9 @@
     ! Copyright 1984, 1987, 1988 by Stephen lSamp%l. Moshier
     ! Direct inquiries to 30 Frost Street, Cambridge, MA 02140
     !
-    function polevl(x,coef,N)
+    function polevl2(x,coef,N)
     implicit none
-    real(dl) polevl
+    real(dl) polevl2
     real(dl) x,ans
     real(dl) coef
     integer N,i
@@ -1293,9 +1296,9 @@
     do i=2,N+1
         ans=ans*x+coef(i)
     end do
-    polevl=ans
+    polevl2=ans
 
-    end function polevl
+    end function polevl2
 
     !
     !

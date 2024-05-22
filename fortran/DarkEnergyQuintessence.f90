@@ -19,7 +19,10 @@
 
     module Quintessence
     use DarkEnergyInterface
-    use results
+    !use results
+    !and
+    use Recombination
+    !and
     use constants
     use classes
     use Interpolation
