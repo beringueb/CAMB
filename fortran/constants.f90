@@ -29,7 +29,7 @@
     real(dl), parameter :: sigma_thomson = 6.6524587321e-29_dl
     real(dl), parameter :: sigma_boltz = 5.670374419e-8_dl
     real(dl), parameter :: k_B = 1.380649e-23_dl
-    real(dl), parameter :: eV = 1.602176634e-19_dl
+    real(dl), parameter :: eV1 = 1.602176634e-19_dl
 
     real(dl), parameter :: m_p = 1.67262192369e-27_dl
     real(dl), parameter :: m_e = 9.1093837015e-31_dl
@@ -63,7 +63,7 @@
 
     ! zeta3*3/2/pi^2*4/11*((k_B*COBE_CMBTemp/hbar/c)^3* 8*pi*G/3/(100*km/s/megaparsec)^2/(c^2/eV)
     real(dl), parameter :: inv_neutrino_mass_fac = zeta3*3._dl/2/const_pi**2*4._dl/11*((k_B*COBE_CMBTemp/hbar/c)**3* &
-        kappa/3/(100*1000/Mpc)**2/(c**2/eV))
+        kappa/3/(100*1000/Mpc)**2/(c**2/eV1))
     !converts omnuh2 into sum m_nu in eV for non-relativistic but thermal neutrinos (no 0.046 factor); ~ 94.07
     real(dl), parameter :: neutrino_mass_fac= 1/inv_neutrino_mass_fac
 

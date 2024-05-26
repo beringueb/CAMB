@@ -236,7 +236,9 @@
     real(dl), parameter :: Do21cm_minev = 1/(1+400.) !at which to evolve T_s
 
     real(dl), parameter :: bigH=100.0D3/Mpc !Ho in s-1
-    real(dl), parameter :: sigma = sigma_thomson
+    ! and
+    real(dl), parameter :: sigma1 = sigma_thomson
+    ! and
     real(dl), parameter :: not4  = mass_ratio_He_H    !mass He/H atom
 
     real(dl), parameter :: B01 = 3*B10
@@ -928,7 +930,7 @@
             write(*,'("N_eff (total)        = ",f9.6)') nu_massless_degeneracy + &
                 sum(this%CP%Nu_mass_degeneracies(1:this%CP%Nu_mass_eigenstates))
             do nu_i=1, this%CP%Nu_mass_eigenstates
-                conv = k_B*(8*this%grhor/this%grhog/7)**0.25*this%CP%tcmb/eV * &
+                conv = k_B*(8*this%grhor/this%grhog/7)**0.25*this%CP%tcmb/eV1 * &
                     (this%CP%nu_mass_degeneracies(nu_i)/this%CP%nu_mass_numbers(nu_i))**0.25 !approx 1.68e-4
                 write(*,'(I2, " nu, g=",f7.4," m_nu*c^2/k_B/T_nu0= ",f9.2," (m_nu= ",f6.3," eV)")') &
                     this%CP%nu_mass_numbers(nu_i), this%CP%nu_mass_degeneracies(nu_i), &
@@ -1981,7 +1983,7 @@
     subroutine Thermo_expansion_values(this, tau, a, adot, opacity)
         class(TThermoData) :: this
         real(dl), intent(in) :: tau
-        real(dl), intent(out) :: a, adot, opacity
+        real(dl), intent(out) :: a, adot, opacity(nscatter)
         integer i
         real(dl) d
     
@@ -3276,18 +3278,18 @@
 
     end subroutine DoWindowSpline
 
-    subroutine IonizationFunctionsAtTime(this,tau, a, opac, dopac, ddopac, &
-        vis, dvis, ddvis, expmmu, lenswin)
+    subroutine IonizationFunctionsAtTime(this,tau, a, opacity, dopacity, ddopacity, &
+        vis, dvis, ddvis, exptau, lenswin)
     class(TThermoData) :: this
     real(dl), intent(in) :: tau
     real(dl), intent(out) :: a
-    real(dl), dimension(:,:), intent(out) :: vis, dvis, ddvis, expmmu, dopac, opac
-    real(dl), dimension(nscatter), intent(out) :: ddopac
-    real(dl), dimension(:), intent(out) :: lenswin 
+    real(dl), intent(out) :: vis(nscatter), dvis(nscatter), ddvis(nscatter), &
+                             exptau(nscatter), opacity(nscatter), dopacity(nscatter), ddopacity(nscatter)
+    real(dl), intent(out) :: lenswin 
     real(dl) d, cs2
     integer :: i, scat
 
-    call this%values_array(tau,a,cs2,opac,dopac)
+    call this%values_array(tau,a,cs2,opacity,dopacity)
 
     d=log(tau/this%tauminn)/this%dlntau+1._dl
     i=int(d)
@@ -3297,12 +3299,12 @@
     ! 
         if (i < this%nthermo) then
             ! andrea change
-            ddopac(scat) = (this%dddotmu(i, scat) + d * (this%ddddotmu(i, scat) + d * (3.0_dl * (this%dddotmu(i + 1, scat) &
+            ddopacity(scat) = (this%dddotmu(i, scat) + d * (this%ddddotmu(i, scat) + d * (3.0_dl * (this%dddotmu(i + 1, scat) &
                 - this%dddotmu(i, scat)) - 2.0_dl * this%ddddotmu(i, scat) - this%ddddotmu(i + 1, scat) &
                 + d * (this%ddddotmu(i, scat) + this%ddddotmu(i + 1, scat) + 2.0_dl * (this%dddotmu(i, scat) &
-                - this%dddotmu(i + 1, scat))))) - (this%dlntau**2) * tau * dopac(i, scat)) / &
+                - this%dddotmu(i + 1, scat))))) - (this%dlntau**2) * tau * dopacity(scat)) / &
                 ((tau * this%dlntau)**2)
-            expmmu(i, scat)=this%emmu(i,scat)+d*(this%demmu(i,scat)+d*(3._dl*(this%emmu(i+1,scat)-this%emmu(i,scat)) &
+            exptau(scat)=this%emmu(i,scat)+d*(this%demmu(i,scat)+d*(3._dl*(this%emmu(i+1,scat)-this%emmu(i,scat)) &
                 -2._dl*this%demmu(i,scat)-this%demmu(i+1,scat)+d*(this%demmu(i,scat)+this%demmu(i+1,scat) &
             +   2._dl*(this%emmu(i,scat)-this%emmu(i+1,scat)))))
             ! 
@@ -3311,16 +3313,16 @@
                     -2._dl*this%dwinlens(i)-this%dwinlens(i+1)+d*(this%dwinlens(i)+this%dwinlens(i+1) &
                     +2._dl*(this%winlens(i)-this%winlens(i+1)))))
             end if
-            vis(i,scat)=opac(i,scat)*expmmu(i,scat)
-            dvis(i,scat)=expmmu(i,scat)*(opac(i,scat)**2+dopac(i,scat))
-            ddvis(i,scat)=expmmu(i,scat)*(opac(i,scat)**3+3*opac(i,scat)*dopac(i,scat)+ddopac(scat))
+            vis(scat)=opacity(scat)*exptau(scat)
+            dvis(scat)=exptau(scat)*(opacity(scat)**2+dopacity(scat))
+            ddvis(scat)=exptau(scat)*(opacity(scat)**3+3*opacity(scat)*dopacity(scat)+ddopacity(scat))
         else
             ! andrea solo change
-            ddopac(scat)=this%dddotmu(this%nthermo,scat)
-            expmmu(i,scat)=this%emmu(this%nthermo,scat)
-            vis(i,scat)=opac(i,scat)*expmmu(i,scat)
-            dvis(i,scat)=expmmu(i,scat)*(opac(i,scat)**2+dopac(i,scat))
-            ddvis(i,scat)=expmmu(i,scat)*(opac(i,scat)**3+3._dl*opac(i,scat)*dopac(i,scat)+ddopac(scat))
+            ddopacity(scat)=this%dddotmu(this%nthermo,scat)
+            exptau(scat)=this%emmu(this%nthermo,scat)
+            vis(scat)=opacity(scat)*exptau(scat)
+            dvis(scat)=exptau(scat)*(opacity(scat)**2+dopacity(scat))
+            ddvis(scat)=exptau(scat)*(opacity(scat)**3+3._dl*opacity(scat)*dopacity(scat)+ddopacity(scat))
             ! 
         end if
     ! 
@@ -3696,15 +3698,15 @@
     end subroutine TCLdata_NormalizeClsAtL
 
 
-    subroutine Thermo_values(this,tau, a, cs2b, opacity, dopacity)
+    subroutine Thermo_values(this, tau, a, cs2b, opacity, dopacity)
         !Compute unperturbed sound speed squared,
         !and ionization fraction by interpolating pre-computed tables.
         !If requested also get time derivative of opacity
         class(TThermoData) :: this
         real(dl), intent(in) :: tau
         real(dl), intent(out) :: a, cs2b
-        real(dl), intent(out) :: opacity
-        real(dl), intent(out), optional :: dopacity
+        real(dl), intent(out) :: opacity(nscatter)
+        real(dl), intent(out), optional :: dopacity(nscatter)
         integer i
         real(dl) d
     
@@ -3717,24 +3719,26 @@
             call MpiStop('thermo out of bounds')
         else if (i >= this%nthermo) then
             cs2b=this%cs2(this%nthermo)
-            opacity=this%dotmu(this%nthermo,1)
+            ! and guess
+            opacity(1)=this%dotmu(this%nthermo,1)
             a=1
             if (present(dopacity)) then
-                dopacity = this%ddotmu(this%nthermo,1)/(tau*this%dlntau)
+                dopacity(1) = this%ddotmu(this%nthermo,1)/(tau*this%dlntau)
             end if
+            ! and
         ! andrea
         else
             cs2b=this%cs2(i)+d*(this%dcs2(i)+d*(3*(this%cs2(i+1)-this%cs2(i))  &
                 -2*this%dcs2(i)-this%dcs2(i+1)+d*(this%dcs2(i)+this%dcs2(i+1)  &
                 +2*(this%cs2(i)-this%cs2(i+1)))))
-            opacity=this%dotmu(i,1)+d*(this%ddotmu(i,1)+d*(3*(this%dotmu(i+1,1)-this%dotmu(i,1)) &
+            opacity(1)=this%dotmu(i,1)+d*(this%ddotmu(i,1)+d*(3*(this%dotmu(i+1,1)-this%dotmu(i,1)) &
                 -2*this%ddotmu(i,1)-this%ddotmu(i+1,1)+d*(this%ddotmu(i,1)+this%ddotmu(i+1,1) &
                 +2*(this%dotmu(i,1)-this%dotmu(i+1,1)))))
             a = (this%ScaleFactor(i)+d*(this%dScaleFactor(i)+d*(3*(this%ScaleFactor(i+1)-this%ScaleFactor(i)) &
                 -2*this%dScaleFactor(i)-this%dScaleFactor(i+1)+d*(this%dScaleFactor(i)+this%dScaleFactor(i+1) &
                 +2*(this%ScaleFactor(i)-this%ScaleFactor(i+1))))))*tau
             if (present(dopacity)) then
-                dopacity=(this%ddotmu(i,1)+d*(this%dddotmu(i,1)+d*(3*(this%ddotmu(i+1,1)  &
+                dopacity(1)=(this%ddotmu(i,1)+d*(this%dddotmu(i,1)+d*(3*(this%ddotmu(i+1,1)  &
                     -this%ddotmu(i,1))-2*this%dddotmu(i,1)-this%dddotmu(i+1,1)+d*(this%dddotmu(i,1) &
                     +this%dddotmu(i+1,1)+2*(this%ddotmu(i,1)-this%ddotmu(i+1,1))))))/(tau*this%dlntau)
         ! 
