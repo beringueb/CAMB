@@ -15,7 +15,7 @@
     !Fisher results are with and without the cosmic variance from low L_1
 
     module Bispectrum
-    use results
+    use Recombination
     use InitialPower
     use SpherBessels
     use constants

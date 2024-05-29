@@ -118,6 +118,9 @@
         logical   :: Want_CMB = .true.
         logical   :: Want_CMB_lensing = .true.
         logical   :: DoLensing  = .true.
+        ! and
+        logical   :: DoRayleigh = .true.
+        ! and
         integer   :: NonLinear = NonLinear_none
         type(TransferParams) :: Transfer
 
@@ -145,6 +148,10 @@
         logical   :: share_delta_neff = .false. !take fractional part to heat all eigenstates the same
         real(dl)  :: Nu_mass_degeneracies(max_nu)
         real(dl)  :: Nu_mass_fractions(max_nu) !The ratios of the total densities
+        ! and
+        real(dl)  :: Ray_num_freqs
+        real(dl)  :: Ray_freqs(Ray_num_freqs)
+        ! and
         integer   :: Nu_mass_numbers(max_nu) !physical number per eigenstate
 
         class(TInitialPower), allocatable :: InitPower

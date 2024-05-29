@@ -5,23 +5,24 @@
 
     program driver
     use CAMB
+    use Recombination
     implicit none
+    class(TThermoData), allocatable :: this
+    class(TRecfast), allocatable :: etat
     character(len=:), allocatable :: InputFile
-    
-    ! andrea
-    character(LEN=Ini_max_string_len) RayleighTerms
-    ! andrea
+
+    allocate(this)
+    allocate(etat)
 
     InputFile = ''
     if (GetParamCount() /= 0)  InputFile = GetParam(1)
     if (InputFile == '') error stop 'No parameter input file'
-    ! andrea
-    RayleighTerms = Ini_read_String('rayleigh_pows')
-    rayleigh_diff = Ini_read_logical('rayleigh_diff',rayleigh_diff)
-    if (RayleighTerms/='') read(RayleighTerms,*) rayleigh_pows
-    ! andrea
-    call CAMB_CommandLineRun(InputFile)
+
+    call CAMB_CommandLineRun(this, etat, InputFile)
     deallocate(InputFile) ! Just so no memory leaks in valgrind
+
+    deallocate(this)
+    deallocate(etat)
 
     end program driver
 

@@ -147,7 +147,7 @@ class CAMBdata(F2003Class):
     To quickly make a fully calculated CAMBdata instance for a set of parameters you can call :func:`.camb.get_results`.
 
     """
-    _fortran_class_module_ = 'results'
+    _fortran_class_module_ = 'Recombination'
 
     _fields_ = [("Params", CAMBparams),
                 ("ThermoDerivedParams", c_double * model.nthermo_derived,

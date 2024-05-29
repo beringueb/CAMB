@@ -3,7 +3,7 @@
     use Precision
     use MiscUtils
     use classes
-    use results
+    use recombination
     implicit none
     private
     

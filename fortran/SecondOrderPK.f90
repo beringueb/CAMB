@@ -6,7 +6,7 @@
     !See Appendix F of astro-ph/0702600 for equations and references
     !
     !The code is not intended for production use and may be quite slow
-    use results
+    use recombination
     use transfer
     use MathUtils
     implicit none

@@ -2,7 +2,7 @@
     module handles
     use CAMB
     use Precision
-    use results
+    use Recombination
     use iso_c_binding
     use DarkEnergyFluid
     use DarkEnergyPPF
@@ -244,26 +244,29 @@
 
     end subroutine F2003Class_free
 
-    function CAMBdata_GetTransfers(State, Params, onlytransfer, onlytimesources) result(error)
+    function CAMBdata_GetTransfers(State, Params, this, etat, onlytransfer, onlytimesources) result(error)
     Type (CAMBdata):: State
     type(CAMBparams) :: Params
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     logical :: onlytransfer, onlytimesources
     integer :: error
 
     error = 0
-    call CAMB_GetResults(State, Params, error, onlytransfer, onlytimesources)
+    call CAMB_GetResults(State, Params, this, etat, error, onlytransfer, onlytimesources)
 
     end function CAMBdata_GetTransfers
 
-    function CAMBdata_CalcBackgroundTheory(State, P) result(error)
+    function CAMBdata_CalcBackgroundTheory(State, P, etat) result(error)
     use cambmain, only: initvars
     Type (CAMBdata):: State
     type(CAMBparams) :: P
+    class(TRecfast) :: etat
     integer error
 
     global_error_flag = 0
     call State%SetParams(P)
-    if (global_error_flag==0) call InitVars(State) !calculate thermal history, e.g. z_drag etc.
+    if (global_error_flag==0) call InitVars(State,etat) !calculate thermal history, e.g. z_drag etc.
     error=global_error_flag
 
     end function CAMBdata_CalcBackgroundTheory
@@ -563,16 +566,18 @@
 
     end subroutine set_cls_template
 
-    subroutine GetOutputEvolutionFork(State, EV, times, outputs, nsources,ncustomsources)
+    subroutine GetOutputEvolutionFork(State, EV, this, etat, times, outputs, nsources,ncustomsources)
     use CAMBmain
     type(CAMBdata) :: State
     type(EvolutionVars) EV
+    class(TThermoData) :: this
+    type(TRecfast) :: etat
     real(dl), intent(in) :: times(:)
     real(dl), intent(out) :: outputs(:,:,:)
     integer, intent(in) :: nsources, ncustomsources
     real(dl) tau,tol1,tauend, taustart
     integer j,ind
-    real(dl) c(24),w(EV%nvar,9), y(EV%nvar), cs2, opacity
+    real(dl) c(24),w(EV%nvar,9), y(EV%nvar), cs2, opacity(nscatter)
     real(dl) yprime(EV%nvar), ddelta, delta, adotoa,growth, a
     real(dl), target :: sources(nsources), custom_sources(ncustomsources)
     real, target :: Arr(Transfer_max)
@@ -590,13 +595,13 @@
         tauend = times(j)
         if (tauend<taustart) cycle
 
-        call GaugeInterface_EvolveScal(EV,tau,y,tauend,tol1,ind,c,w)
+        call GaugeInterface_EvolveScal(EV,this,tau,y,tauend,tol1,ind,c,w)
         yprime = 0
         EV%OutputTransfer =>  Arr
         EV%OutputSources => sources
         EV%OutputStep = 0
         if (ncustomsources>0) EV%CustomSources => custom_sources
-        call derivs(EV,EV%ScalEqsToPropagate,tau,y,yprime)
+        call derivs(EV,this,etat,EV%ScalEqsToPropagate,tau,y,yprime)
         nullify(EV%OutputTransfer, EV%OutputSources, EV%CustomSources)
         call State%ThermoData%Values(tau,a, cs2,opacity)
         outputs(1:Transfer_Max, j, EV%q_ix) = Arr
@@ -631,11 +636,13 @@
     end do
     end subroutine GetOutputEvolutionFork
 
-    function CAMB_TimeEvolution(this,nq, q, ntimes, times, noutputs, outputs, &
+    function CAMB_TimeEvolution(this,est,etat,nq, q, ntimes, times, noutputs, outputs, &
         ncustomsources,c_source_func) result(err)
     use GaugeInterface
     use CAMBmain
     Type(CAMBdata),target :: this
+    class(TThermoData) :: est
+    class(TRecfast) :: etat
     integer, intent(in) :: nq, ntimes, noutputs, ncustomsources
     real(dl), intent(in) :: q(nq), times(ntimes)
     real(dl), intent(out) :: outputs(noutputs, ntimes, nq)
@@ -656,7 +663,7 @@
     global_error_flag = 0
     outputs = 0
     taustart = min(times(1),GetTauStart(maxval(q)))
-    if (.not. this%ThermoData%HasTHermoData .or. taustart < this%ThermoData%tauminn) call this%ThermoData%Init(this,taustart)
+    if (.not. this%ThermoData%HasTHermoData .or. taustart < this%ThermoData%tauminn) call this%ThermoData%Init(this,etat,taustart)
     !$OMP PARALLEL DO DEFAUlT(SHARED),SCHEDUlE(DYNAMIC), PRIVATE(EV, q_ix)
     do q_ix= 1, nq
         if (global_error_flag==0) then
@@ -666,7 +673,7 @@
             EV%q2=EV%q**2
             EV%ThermoData => this%ThermoData
             call GetNumEqns(EV)
-            call GetOutputEvolutionFork(State,EV, times, outputs, 3, ncustomsources)
+            call GetOutputEvolutionFork(State, EV, est, etat, times, outputs, 3, ncustomsources)
         end if
     end do
     !$OMP END PARALLEL DO
@@ -676,18 +683,22 @@
     end function CAMB_TimeEvolution
 
 
-    subroutine GetBackgroundThermalEvolution(this, ntimes, times, outputs)
+    subroutine GetBackgroundThermalEvolution(this, est, etat, ntimes, times, outputs)
     use splines
-    Type(CAMBdata) :: this
+    class(CAMBdata) :: this
+    class(TThermoData) :: est
+    class(TRecfast) :: etat
     integer, intent(in) :: ntimes
     real(dl), intent(in) :: times(ntimes)
     real(dl) :: outputs(9, ntimes)
     real(dl), allocatable :: spline_data(:), ddxe(:), ddTb(:)
-    real(dl) :: a, d, tau, cs2b, opacity, Tbaryon, dopacity, ddopacity, &
-        visibility, dvisibility, ddvisibility, exptau, lenswindow
+    real(dl) :: a, d, tau, cs2b, Tbaryon, lenswindow
+    real(dl) opacity(nscatter), dopacity(nscatter), ddopacity(nscatter), &
+        visibility(nscatter), dvisibility(nscatter), ddvisibility(nscatter), &
+        exptau(nscatter)
     integer i, ix
 
-    if (.not. this%ThermoData%HasTHermoData) call this%ThermoData%Init(this,min(1d-3,max(1d-5,minval(times))))
+    if (.not. this%ThermoData%HasTHermoData) call this%ThermoData%Init(this,etat,min(1d-3,max(1d-5,minval(times))))
 
     associate(T=>this%ThermoData)
         allocate(spline_data(T%nthermo), ddxe(T%nthermo), ddTb(T%nthermo))
@@ -717,15 +728,16 @@
                 outputs(1,ix)=T%xe(T%nthermo)
                 Tbaryon = T%Tb(T%nthermo)
             end if
-
-            outputs(2, ix) = opacity
-            outputs(3, ix) = visibility
+            ! and ?
+            outputs(2, ix) = opacity(1)
+            outputs(3, ix) = visibility(1)
             outputs(4, ix) = cs2b
             outputs(5, ix) = Tbaryon
-            outputs(6, ix) = dopacity
-            outputs(7, ix) = ddopacity
-            outputs(8, ix) = dvisibility
-            outputs(9, ix) = ddvisibility
+            outputs(6, ix) = dopacity(1)
+            outputs(7, ix) = ddopacity(1)
+            outputs(8, ix) = dvisibility(1)
+            outputs(9, ix) = ddvisibility(1)
+            ! and
         end do
     end associate
 

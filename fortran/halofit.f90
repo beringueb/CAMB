@@ -46,7 +46,7 @@
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     module NonLinear
-    use results
+    use recombination
     use DarkEnergyInterface
     use classes
     use Transfer

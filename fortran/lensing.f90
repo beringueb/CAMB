@@ -37,7 +37,7 @@
 
     module lensing
     use Precision
-    use results
+    use recombination
     use constants, only : const_pi, const_twopi, const_fourpi
     use splines
     implicit none
@@ -134,6 +134,7 @@
     !Accurate curved sky correlation function method
     !Uses non-perturbative isotropic term with 2nd order expansion in C_{gl,2}
     !Neglects C_{gl}(theta) terms (very good approx)
+    use constants
     class(CAMBdata), target :: State
     Type(TCLData) :: CL, CLout
     real(dl) :: CPP(0:State%CP%max_l) ! [L(L+1)]^2 C_L_phi_phi/2pi
@@ -154,6 +155,8 @@
     real(dl) xl(lmax)
     real(dl), allocatable :: ddcontribs(:,:),corrcontribs(:,:)
     real(dl), allocatable :: lens_contrib(:,:,:)
+    real(dl), allocatable :: Cl_lensed_freqs(:,:,:,:)
+    real(dl), allocatable :: Cl_Scalar_Array(:,:,:)
     integer thread_ix
     real(dl) pmm, pmmp1
     real(dl) d4m4,d11,dm11,d2m2,d22,d20,d23,d2m3,d33,d3m3,d04,d1m2,d12,d13,d1m3,d2m4
@@ -237,7 +240,7 @@
         allocate(ddcontribs(lmax,4),corrcontribs(lmax,4))
         ! andrea
         if (nscatter>1) then
-            allocate(Cl_lensed_freqs(lmin:lmax_lensed,CP%InitPower%nn,1:4,num_cmb_freq,num_cmb_freq))
+            allocate(Cl_lensed_freqs(lmin:CLout%lmax_lensed,1:4,num_cmb_freq,num_cmb_freq))
         end if
 
         do f_i_1=nscatter,1,-1
@@ -251,9 +254,9 @@
             fac = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
             ! andrea
             if (f_i_2>1 .or. f_i_2>1) then
-            CTT(l) =   Cl_Scalar_Array(l,in,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)*fac
-            CEE(l) =   Cl_Scalar_Array(l,in,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
-            CTE(l) =   Cl_Scalar_Array(l,in,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
+            CTT(l) =   Cl_Scalar_Array(l,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)*fac
+            CEE(l) =   Cl_Scalar_Array(l,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
+            CTE(l) =   Cl_Scalar_Array(l,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
             else
             ! andrea
             CTT(l) =  CL%Cl_scalar(l,C_Temp)*fac
@@ -541,16 +544,16 @@
     ! andrea
     ! andrea
         if (f_i_1>1 .and. f_i_2>1) then
-            do l=lmin, lmax_lensed
+            do l=lmin, CLout%lmax_lensed
             !sign from d(cos theta) = -sin theta dtheta
-                fac = l*(l+1)/OutputDenominator*dtheta *2*pi
-                Cl_lensed_freqs(l,in,CT_Temp,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Temp,l,:))*fac &
-                 +  Cl_Scalar_Array(l,in,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)
-                Cl_lensed_freqs(l,in,CT_E,f_i_1-1,f_i_2-1)=sum(lens_contrib(CT_E,l,:))*fac &
-                 +  Cl_Scalar_Array(l,in,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
-                Cl_lensed_freqs(l,in,CT_B,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_B,l,:))*fac
-                Cl_lensed_freqs(l,in,CT_Cross,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Cross,l,:))*fac &
-                 +  Cl_Scalar_Array(l,in,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
+                fac = l*(l+1)/OutputDenominator*dtheta *2*const_pi
+                Cl_lensed_freqs(l,CT_Temp,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Temp,l,:))*fac &
+                 +  Cl_Scalar_Array(l,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)
+                Cl_lensed_freqs(l,CT_E,f_i_1-1,f_i_2-1)=sum(lens_contrib(CT_E,l,:))*fac &
+                 +  Cl_Scalar_Array(l,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
+                Cl_lensed_freqs(l,CT_B,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_B,l,:))*fac
+                Cl_lensed_freqs(l,CT_Cross,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Cross,l,:))*fac &
+                 +  Cl_Scalar_Array(l,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
             end do
         else
         ! andrea
@@ -569,7 +572,6 @@
         ! andrea
         end if
             end do !loop over different initial power spectra
-    end do !frequencies
     end do !frequencies
         ! andrea
         if (DebugMsgs) call Timer%WriteTime('Time for corr lensing')

@@ -2,7 +2,7 @@
 
     module CAMB
     use Precision
-    use results
+    use Recombination
     use GaugeInterface
     use InitialPower
     use Reionization
@@ -47,12 +47,14 @@
     end subroutine CAMB_TransfersToPowers
 
     !Call this routine with a set of parameters to generate the results you want.
-    subroutine CAMB_GetResults(OutData, Params, error, onlytransfer, onlytimesources)
+    subroutine CAMB_GetResults(OutData, Params, this, etat,error, onlytransfer, onlytimesources)
     use CAMBmain
     use lensing
     use Bispectrum
     type(CAMBdata)  :: OutData
     type(CAMBparams) :: Params
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     integer, optional :: error !Zero if OK
     logical, optional :: onlytransfer, onlytimesources
     type(CAMBparams) P
@@ -73,7 +75,7 @@
         P%WantScalars = .false.
         P%WantVectors = .false.
         call OutData%SetParams(P, call_again=call_again)
-        if (global_error_flag==0) call cmbmain
+        if (global_error_flag==0) call cmbmain(this,etat)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
@@ -88,7 +90,7 @@
         P%WantScalars = .false.
         P%WantTensors = .false.
         call OutData%SetParams(P, call_again=call_again)
-        if (global_error_flag==0) call cmbmain
+        if (global_error_flag==0) call cmbmain(this,etat)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
@@ -106,7 +108,7 @@
             P%WantTransfer  = .true.
         end if
         call OutData%SetParams(P)
-        if (global_error_flag==0) call cmbmain
+        if (global_error_flag==0) call cmbmain(this,etat)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
@@ -122,7 +124,7 @@
         P%WantTensors = .false.
         P%WantVectors = .false.
         call OutData%SetParams(P, call_again=call_again)
-        if (global_error_flag==0) call cmbmain
+        if (global_error_flag==0) call cmbmain(this,etat)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
@@ -241,7 +243,7 @@
     use DarkEnergyFluid
     use DarkEnergyPPF
     use Quintessence
-    use results
+    use Recombination
 #ifdef COSMOREC
     use CosmoRec
 #endif
@@ -582,13 +584,15 @@
 
     end function CAMB_ReadParams
 
-    logical function CAMB_RunFromIni(Ini, InputFile, ErrMsg)
+    logical function CAMB_RunFromIni(Ini, this, etat, InputFile, ErrMsg)
     use IniObjects
     use Lensing
     use constants
     use Bispectrum
     use CAMBmain
     class(TIniFile) :: Ini
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     character(LEN=*), intent(in) :: InputFile
     character(LEN=*), intent(inout) :: ErrMsg
     type(CAMBparams) P
@@ -729,7 +733,7 @@
         return
     end if
 
-    if (global_error_flag==0) call CAMB_GetResults(State,P)
+    if (global_error_flag==0) call CAMB_GetResults(State,P,this,etat)
     if (global_error_flag/=0) then
         ErrMsg =  trim(global_error_message)
         return
@@ -761,11 +765,13 @@
 
     end function CAMB_RunFromIni
 
-    logical function CAMB_RunIniFile(InputFile, InpLen)
+    logical function CAMB_RunIniFile(this, etat, InputFile, InpLen)
     integer, intent(in) :: InpLen
     character(LEN=InpLen), intent(in) :: InputFile
     character(LEN=len(global_error_message)) :: ErrMsg
     Type(TIniFile) :: Ini
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     logical bad
 
     !Same as CAMB_CommandLineRun but does not read variables that change global state
@@ -774,7 +780,7 @@
     call Ini%Open(InputFile, bad, .false.)
     Ini%Fail_on_not_found = .false.
     ErrMsg = ''
-    CAMB_RunIniFile = CAMB_RunFromIni(Ini, InputFile, ErrMsg)
+    CAMB_RunIniFile = CAMB_RunFromIni(Ini, this, etat,InputFile, ErrMsg)
     call Ini%Close()
     if (ErrMsg/='') call GlobalError(ErrMsg,error_ini)
 
@@ -801,9 +807,11 @@
 
     end subroutine CAMB_CommandLineValidate
 
-    subroutine CAMB_CommandLineRun(InputFile)
+    subroutine CAMB_CommandLineRun(this,etat,InputFile)
     character(LEN=*), intent(in) :: InputFile
     Type(TIniFile) :: Ini
+    class(TThermoData), intent(inout) :: this
+    class(TRecfast), intent(inout) :: etat
     character(LEN=1024) :: ErrMsg
     logical bad
 
@@ -821,7 +829,7 @@
     if (Ini%HasKey('DebugMsgs')) call Ini%Read('DebugMsgs', DebugMsgs)
 
     Ini%Fail_on_not_found = .false.
-    if (.not. CAMB_RunFromIni(Ini, InputFile, ErrMsg)) then
+    if (.not. CAMB_RunFromIni(Ini, this, etat, InputFile, ErrMsg)) then
         write(*,*) trim(ErrMsg)
         error stop 'Invalid parameter'
     end if

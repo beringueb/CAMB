@@ -255,12 +255,12 @@
     end subroutine SetActiveState
 
 
-    subroutine GaugeInterface_ScalEv(EV,y,tau,tauend,tol1,ind,c,w)
+    subroutine GaugeInterface_ScalEv(EV,y,tau,tauend,tol1,ind,c1,w)
     type(EvolutionVars) EV
-    real(dl) c(24),w(EV%nvar,9), y(EV%nvar), tol1, tau, tauend
+    real(dl) c1(24),w(EV%nvar,9), y(EV%nvar), tol1, tau, tauend
     integer ind
 
-    call dverk(EV,EV%ScalEqsToPropagate,derivs,tau,y,tauend,tol1,ind,c,EV%nvar,w)
+    call dverk(EV,EV%ScalEqsToPropagate,derivs,tau,y,tauend,tol1,ind,c1,EV%nvar,w)
     if (ind==-3) then
         call GlobalError('Dverk error -3: the subroutine was unable  to  satisfy  the  error ' &
             //'requirement  with a particular step-size that is less than or * ' &
@@ -295,13 +295,13 @@
 
     end function next_nu_nq
 
-    recursive subroutine GaugeInterface_EvolveScal(EV,this,tau,y,tauend,tol1,ind,c,w)
+    recursive subroutine GaugeInterface_EvolveScal(EV,this,tau,y,tauend,tol1,ind,c1,w)
     use Recombination, only : CB1
     type(EvolutionVars) EV, EVout
-    type(TThermoData) :: this
-    real(dl) c(24),w(EV%nvar,9), y(EV%nvar), yout(EV%nvar), tol1, tau, tauend
+    class(TThermoData) :: this
+    real(dl) c1(24),w(EV%nvar,9), y(EV%nvar), yout(EV%nvar), tol1, tau, tauend
     integer ind, nu_i
-    real(dl) cs2, opacity, dopacity
+    real(dl) cs2, opacity(nscatter), dopacity(nscatter)
     real(dl) tau_switch_ktau, tau_switch_nu_massless, tau_switch_nu_massive, next_switch
     real(dl) tau_switch_no_nu_multpoles, tau_switch_no_phot_multpoles,tau_switch_nu_nonrel
     real(dl) noSwitch, smallTime
@@ -360,7 +360,7 @@
     !andrea
     if (next_switch < tauend) then
         if (next_switch > tau+smallTime) then
-            call GaugeInterface_ScalEv(EV, y, tau,next_switch,tol1,ind,c,w)
+            call GaugeInterface_ScalEv(EV, y, tau,next_switch,tol1,ind,c1,w)
             if (global_error_flag/=0) return
         end if
 
@@ -377,7 +377,7 @@
             ind=1
             !Set up variables with their tight coupling values
             y(EV%g_ix+2) = EV%pig
-            call EV%ThermoData%Values(this,tau,a, cs2,opacity,dopacity)
+            call this%values(tau,a, cs2,opacity,dopacity)
 
             if (second_order_tightcoupling) then
                 ! Francis-Yan Cyr-Racine November 2010
@@ -443,7 +443,7 @@
         else if (next_switch == tau_switch_nu_massive) then
             !Very non-relativistic neutrinos, switch to truncated velocity-weight hierarchy
             ! and modification DU CAMB INITIAL HORS RAYLEIGH
-            call EV%ThermoData%Values(this,tau,a,cs2,opacity,dopacity)
+            call this%values(tau,a,cs2,opacity,dopacity)
             ! and
             do nu_i = 1, CP%Nu_mass_eigenstates
                 if (.not. EV%MassiveNuApprox(nu_i) .and.  next_switch== EV%MassiveNuApproxTime(nu_i) ) then
@@ -475,7 +475,7 @@
             call SetupScalarArrayIndices(EVout)
             call CopyScalarVariableArray(y,yout, EV, EVout)
             ! and modification DU CAMB INITIAL HORS RAYLEIGH
-            call EV%ThermoData%Values(this,tau,a, cs2,opacity, dopacity)
+            call this%values(tau,a, cs2,opacity, dopacity)
             ! and
             y=yout
             EV=EVout
@@ -493,24 +493,25 @@
             y(EV%Tg_ix) =y(EV%g_ix)/4 ! assume delta_TM = delta_T_gamma
         end if
 
-        call GaugeInterface_EvolveScal(EV,tau,y,tauend,tol1,ind,c,w)
+        call GaugeInterface_EvolveScal(EV,this,tau,y,tauend,tol1,ind,c1,w)
         return
     end if
 
-    call GaugeInterface_ScalEv(EV,y,tau,tauend,tol1,ind,c,w)
+    call GaugeInterface_ScalEv(EV,y,tau,tauend,tol1,ind,c1,w)
 
     end subroutine GaugeInterface_EvolveScal
 
-    subroutine GaugeInterface_EvolveTens(EV,this,tau,y,tauend,tol1,ind,c,w)
+    subroutine GaugeInterface_EvolveTens(EV,this,tau,y,tauend,tol1,ind,c1,w)
+    use recombination
     type(EvolutionVars) EV, EVOut
-    type(TThermoData) :: this
-    real(dl) c(24),w(EV%nvart,9), y(EV%nvart),yout(EV%nvart), tol1, tau, tauend
+    type(TThermoData), intent(in) :: this
+    real(dl) c1(24),w(EV%nvart,9), y(EV%nvart),yout(EV%nvart), tol1, tau, tauend
     integer ind
-    real(dl) opacity, cs2, a
+    real(dl) opacity(nscatter), cs2, a
 
     if (EV%TensTightCoupling .and. tauend > EV%TightSwitchoffTime) then
         if (EV%TightSwitchoffTime > tau) then
-            call dverk(EV,EV%TensEqsToPropagate, derivst,tau,y,EV%TightSwitchoffTime,tol1,ind,c,EV%nvart,w)
+            call dverk(EV,EV%TensEqsToPropagate, derivst,tau,y,EV%TightSwitchoffTime,tol1,ind,c1,EV%nvart,w)
         end if
         EVOut=EV
         EVOut%TensTightCoupling = .false.
@@ -519,7 +520,7 @@
         Ev = EvOut
         y=yout
         ! and modification DU CAMB INITIAL HORS RAYLEIGH
-        call EV%ThermoData%Values(this, tau,a,cs2,opacity)
+        call this%values(tau,a,cs2,opacity)
         ! and
         y(EV%g_ix+2)= 32._dl/45._dl*EV%k_buf/opacity(1)*y(ixt_shear)
         y(EV%E_ix+2) = y(EV%g_ix+2)/4
@@ -533,7 +534,7 @@
         ! andrea
     end if
 
-    call dverk(EV,EV%TensEqsToPropagate, derivst,tau,y,tauend,tol1,ind,c,EV%nvart,w)
+    call dverk(EV,EV%TensEqsToPropagate, derivst,tau,y,tauend,tol1,ind,c1,EV%nvart,w)
 
     end subroutine GaugeInterface_EvolveTens
 
@@ -1745,11 +1746,11 @@
     end do
     end subroutine output_window_sources
     ! andrea
-    subroutine output(EV, yin, j, tau,sources, num_custom_sources)
+    subroutine output(EV, this, etat, yin, j, tau,sources, num_custom_sources)
     ! andrea
     type(EvolutionVars) EV
-    type(TThermoData) this
-    type(TRecfast) etat
+    type(TThermoData) :: this
+    type(TRecfast) :: etat
     ! andrea
     real(dl) yin(EV%nvar),yprimein(EV%nvar)
     ! andrea
@@ -1774,13 +1775,13 @@
     end subroutine output
 
     ! andrea
-    subroutine outputt(EV,ytin,n,tau,dt,dte,dtb)
+    subroutine outputt(EV,this,ytin,n,tau,dt,dte,dtb)
     ! andrea
     !calculate the tensor sources for open and closed case
     implicit none
     integer n
     type(EvolutionVars) :: EV
-    type(TRecfast) this
+    class(TRecfast) this
     real(dl), target :: yt(n), ytprime(n)
     ! andrea
     real(dl)  :: ytin(n), ytprimein(n)
@@ -1891,15 +1892,17 @@
     end subroutine outputt
 
 
-    subroutine outputv(EV,yv,n,tau,dt,dte,dtb)
+    subroutine outputv(EV,this,etat,yv,n,tau,dt,dte,dtb)
     !calculate the vector sources
     implicit none
     integer n
     type(EvolutionVars) :: EV
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     real(dl), target :: yv(n), yvprime(n)
     ! and
     real(dl) tau,x,polterdot
-    real(dl) dt(nscatter), dte(nscatter), dtb(nscatter)
+    real(dl) dt, dte, dtb
     ! and
     real(dl) vb,qg, pig, polter, sigma
     real(dl) k,k2
@@ -1911,7 +1914,7 @@
                         visibility(nscatter), dvisibility(nscatter), ddvisibility(nscatter)
 
 
-    call derivsv(EV,EV%nvarv,tau,yv,yvprime)
+    call derivsv(EV,this,etat,EV%nvarv,tau,yv,yvprime)
 
     k2=EV%k2_buf
     k=EV%k_buf
@@ -1938,16 +1941,16 @@
         else
             dt =0
         end if
-        dt(1)= (4*(vb+sigma)*visibility(1) + 15._dl/2/k*( visibility(1)*polterdot + dvisibility(1)*polter) &
+        dt= (4*(vb+sigma)*visibility(1) + 15._dl/2/k*( visibility(1)*polterdot + dvisibility(1)*polter) &
             + 4*(exptau(1)*yvprime(2)) )/x
 
-        dte(1)= 15._dl/2*2*polter/x**2*visibility(1) + 15._dl/2/k*(dvisibility(1)*polter + visibility(1)*polterdot)/x
+        dte= 15._dl/2*2*polter/x**2*visibility(1) + 15._dl/2/k*(dvisibility(1)*polter + visibility(1)*polterdot)/x
 
-        dtb(1)= -15._dl/2*polter/x*visibility(1)
+        dtb= -15._dl/2*polter/x*visibility(1)
     else
-        dt(1)=0
-        dte(1)=0
-        dtb(1)=0
+        dt=0
+        dte=0
+        dtb=0
     end if
 
     end subroutine outputv
@@ -2330,8 +2333,8 @@
     implicit none
     type(EvolutionVars) EV
     ! and au pif
-    type(TThermoData) this
-    type(TRecfast) etat
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     ! and
     real(dl), intent(in) :: tau
     real, target :: Arr(:)
@@ -2353,8 +2356,8 @@
     implicit none
     type(EvolutionVars) EV
     ! and au pif
-    type(TThermoData) this
-    type(TRecfast) etat
+    type(TThermoData) :: this
+    type(TRecfast) :: etat
     ! and 
     integer n,nu_i
     real(dl) ay(n),ayprime(n)
@@ -3182,12 +3185,13 @@
 
     end subroutine derivs
 
-    subroutine derivsv(EV,this,n,tau,yv,yvprime)
+    subroutine derivsv(EV,this,etat,n,tau,yv,yvprime)
     !  Evaluate the time derivatives of the vector perturbations, flat case
     use MassiveNu
     implicit none
     type(EvolutionVars) EV
     type(TThermoData) :: this
+    type(TRecfast) :: etat
     integer n,l
     real(dl), target ::  yv(n),yvprime(n)
     real(dl) ep,tau,grho,rhopi,cs2,opacity(nscatter),gpres
@@ -3218,10 +3222,10 @@
     !  Get sound speed and opacity, and see if should use tight-coupling
     
     ! and modification DU CAMB INITIAL HORS RAYLEIGH
-    call EV%ThermoData%Values(tau,a,cs2,opacity)
+    call this%values(tau,a,cs2,opacity)
     ! and
     ! andrea not sure
-    call thermoarrr(tau,cs2,opacity)
+    call this%values_array(tau,a,cs2,opacity)
     ! andrea
     if (k > 0.06_dl*epsw) then
         ep=ep0

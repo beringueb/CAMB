@@ -104,7 +104,7 @@
 
     subroutine TInitialPowerLaw_Init(this, Params)
     use classes
-    use results
+    use recombination
     use constants, only : c
     class(TInitialPowerLaw) :: this
     class(TCAMBParameters), intent(in) :: Params

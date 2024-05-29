@@ -435,7 +435,8 @@
     procedure :: Init => Thermo_Init
     procedure :: OpacityToTime => Thermo_OpacityToTime
     !procedure :: total_scattering_eff => Thermo_Total_Scattering_Eff
-    procedure :: values => Thermo_values
+    !procedure :: values => Thermo_values
+    procedure :: values => Thermo_values 
     procedure :: values_array => Thermo_values_array ! BB24
     procedure :: expansion_values => Thermo_expansion_values
     procedure :: expansion_values_array => Thermo_expansion_values_array !BB24
@@ -638,6 +639,21 @@
     end interface
 
     !procedure(obj_function), private :: dtauda
+
+    ! and
+    !interface
+    !subroutine Thermo_values(this, tau, a, cs2, opacity)
+    !    use precision
+    !    type(ThermoData), intent(in) :: this
+    !    real(dl), intent(in) :: tau
+    !    real(dl), intent(out) :: a
+    !    real(dl), intent(out) :: cs2
+    !    real(dl), intent(out) :: opacity
+    !    integer i
+    !    real(dl) d
+    !end subroutine Thermo_values
+    !end interface
+    ! and
 
     contains
 
@@ -3702,7 +3718,7 @@
         !Compute unperturbed sound speed squared,
         !and ionization fraction by interpolating pre-computed tables.
         !If requested also get time derivative of opacity
-        class(TThermoData) :: this
+        class(TThermoData), intent(in) :: this
         real(dl), intent(in) :: tau
         real(dl), intent(out) :: a, cs2b
         real(dl), intent(out) :: opacity(nscatter)

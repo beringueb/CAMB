@@ -53,7 +53,7 @@
 
 
     use precision
-    use results
+    !use results
     use GaugeInterface
     use SpherBessels
     use MassiveNu
@@ -83,7 +83,7 @@
 
     real(dl), dimension(:,:), allocatable :: iCl_scalar, iCl_vector, iCl_tensor
     ! andrea
-    real(dl), dimension(:,:,:,:,:), allocatable :: iCl_tensor_array
+    real(dl), dimension(:,:,:,:), allocatable :: iCl_tensor_array
     ! andrea
     ! Cls at the l values we actually compute,  iCl_xxx(l_index, Cl_type, initial_power_index)
 
@@ -123,12 +123,14 @@
     contains
 
 
-    subroutine cmbmain
+    subroutine cmbmain(this,etat)
     integer q_ix
     type(EvolutionVars) EV
     Type(TTimer) :: Timer
     real(dl) starttime
     Type(ClTransferData), pointer :: ThisCT 
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
 
     WantLateTime =  CP%DoLensing .or. State%num_redshiftwindows > 0 .or. CP%CustomSources%num_custom_sources>0
 
@@ -147,7 +149,7 @@
 
     if (DebugMsgs .and. Feedbacklevel > 0) call Timer%Start(starttime)
 
-    call InitVars(State) !Most of single thread time spent here (in InitRECFAST)
+    call InitVars(State,etat) !Most of single thread time spent here (in InitRECFAST)
     if (global_error_flag/=0) return
 
     if (DebugMsgs .and. Feedbacklevel > 0) then
@@ -198,7 +200,7 @@
 
         !$OMP PARALLEL DO DEFAULT(SHARED),SCHEDULE(DYNAMIC), PRIVATE(EV, q_ix)
         do q_ix= ThisSources%Evolve_q%npoints,1,-1
-            if (global_error_flag==0) call DoSourcek(EV,q_ix)
+            if (global_error_flag==0) call DoSourcek(EV,this,etat,q_ix)
         end do
         !$OMP END PARALLEL DO
 
@@ -208,7 +210,7 @@
 
     ! If transfer functions are requested, set remaining k values and output
     if (CP%WantTransfer .and. global_error_flag==0) then
-        call TransferOut
+        call TransferOut(this,etat)
         if (DebugMsgs .and. Feedbacklevel > 0) call Timer%WriteTime('Timing for transfer k values')
     end if
 
@@ -320,7 +322,7 @@
     if (CP%WantTensors .and. global_error_flag==0) then
         allocate(iCl_Tensor(State%CLdata%CTransTens%ls%nl,CT_Temp:CT_Cross), source=0._dl)
         ! andrea
-        allocate(iCl_Tensor_array(CTransT%ls%l0,CT_Temp:CT_Cross,CP%InitPower%nn,num_cmb_freq,num_cmb_freq))
+        allocate(iCl_Tensor_array(State%CLdata%CTransTens%ls%nl,CT_Temp:CT_Cross,num_cmb_freq,num_cmb_freq))
         iCl_Tensor_array = 0
         ! andrea
         call CalcTensCls(State%CLdata%CTransTens,GetInitPowerArrayTens)
@@ -719,10 +721,12 @@
     GetTauStart=taustart
     end function GetTauStart
 
-    subroutine DoSourcek(EV,q_ix)
+    subroutine DoSourcek(EV,this,etat,q_ix)
     integer q_ix
     real(dl) taustart
     type(EvolutionVars) EV
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
 
     EV%q=ThisSources%Evolve_q%points(q_ix)
 
@@ -737,9 +741,9 @@
 
     call GetNumEqns(EV)
 
-    if (CP%WantScalars .and. global_error_flag==0) call CalcScalarSources(EV,taustart)
-    if (CP%WantVectors .and. global_error_flag==0) call CalcVectorSources(EV,taustart)
-    if (CP%WantTensors .and. global_error_flag==0) call CalcTensorSources(EV,taustart)
+    if (CP%WantScalars .and. global_error_flag==0) call CalcScalarSources(EV,this,etat,taustart)
+    if (CP%WantVectors .and. global_error_flag==0) call CalcVectorSources(EV,this,etat,taustart)
+    if (CP%WantTensors .and. global_error_flag==0) call CalcTensorSources(EV,etat,taustart)
 
     end subroutine DoSourcek
 
@@ -759,7 +763,7 @@
             State%Scalar_C_last = C_Cross
         end if
         ! andrea
-        ThisSources%SourceNum= = ThisSources%SourceNum= + num_cmb_freq*2
+        ThisSources%SourceNum = ThisSources%SourceNum + num_cmb_freq*2
         ! andrea
     else
         ! andrea
@@ -780,8 +784,9 @@
 
 
     !  initial variables, number of steps, etc.
-    subroutine InitVars(state)
+    subroutine InitVars(state,etat)
     type(CAMBdata) :: state
+    class(TRecfast) :: etat
     real(dl) taumin, maxq, initAccuracyBoost
     integer itf
 
@@ -830,7 +835,7 @@
     !     This subroutine also fixes the timesteps where the sources are
     !     saved in order to do the integration. So TimeSteps is set here.
     !These routines in ThermoData (modules.f90)
-    call State%ThermoData%Init(State,taumin)
+    call State%ThermoData%Init(State,etat,taumin)
     if (global_error_flag/=0) return
 
     if (DebugMsgs .and. Feedbacklevel > 0) write (*,*) 'ThermoData.Init'
@@ -981,11 +986,13 @@
 
     end subroutine SetClosedkValuesFromArr
 
-    subroutine CalcScalarSources(EV,taustart)
+    subroutine CalcScalarSources(EV,this,etat,taustart)
     use FileUtils
     use MpiUtils
     implicit none
     type(EvolutionVars) EV
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     real(dl) tau,tol1,tauend, taustart
     integer j,ind,itf
     ! andrea
@@ -1008,9 +1015,9 @@
         if  (CP%Transfer%high_precision) tol1=tol1/100
         do while (itf <= State%num_transfer_redshifts .and. State%TimeSteps%points(2) > State%Transfer_Times(itf))
             !Just in case someone wants to get the transfer outputs well before recombination
-            call GaugeInterface_EvolveScal(EV,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
+            call GaugeInterface_EvolveScal(EV,this,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
             if (global_error_flag/=0) return
-            call outtransf(EV,y, tau, State%MT%TransferData(:,EV%q_ix,itf))
+            call outtransf(EV, this, etat, y, tau, State%MT%TransferData(:,EV%q_ix,itf))
             itf = itf+1
         end do
     end if
@@ -1023,24 +1030,24 @@
             ThisSources%LinearSrc(EV%q_ix,:,j)=0
         else
             !Integrate over time, calulate end point derivs and calc output
-            call GaugeInterface_EvolveScal(EV,tau,y,tauend,tol1,ind,c,w)
+            call GaugeInterface_EvolveScal(EV,this,tau,y,tauend,tol1,ind,c,w)
             if (global_error_flag/=0) return
 
-            call output(EV,y,j, tau,sources, CP%CustomSources%num_custom_sources)
+            call output(EV,this,etat,y,j, tau,sources, CP%CustomSources%num_custom_sources)
             ThisSources%LinearSrc(EV%q_ix,:,j)=sources
 
             !     Calculation of transfer functions.
 101         if (CP%WantTransfer.and.itf <= State%num_transfer_redshifts) then
                 if (j < State%TimeSteps%npoints) then
                     if (tauend < State%Transfer_Times(itf) .and. State%TimeSteps%points(j+1)  > State%Transfer_Times(itf)) then
-                        call GaugeInterface_EvolveScal(EV,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
+                        call GaugeInterface_EvolveScal(EV,this,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
                         if (global_error_flag/=0) return
                     endif
                 end if
                 !     output transfer functions for this k-value.
 
                 if (abs(tau-State%Transfer_Times(itf)) < 1.e-5_dl .or. j==State%TimeSteps%npoints) then
-                    call outtransf(EV,y, tau, State%MT%TransferData(:,EV%q_ix,itf))
+                    call outtransf(EV,this,etat,y, tau, State%MT%TransferData(:,EV%q_ix,itf))
                     itf=itf+1
                     if (j < State%TimeSteps%npoints) then
                         if (itf <= State%num_transfer_redshifts.and. &
@@ -1058,9 +1065,10 @@
     end subroutine CalcScalarSources
 
 
-    subroutine CalcTensorSources(EV,taustart)
+    subroutine CalcTensorSources(EV,this,taustart)
     implicit none
     type(EvolutionVars) EV
+    class(TRecfast) :: this
     real(dl) tau,tol1,tauend, taustart
     integer j,ind
     real(dl) c(24),wt(EV%nvart,9), yt(EV%nvart)
@@ -1079,13 +1087,13 @@
         if (EV%q*tauend > max_etak_tensor) then
             ThisSources%LinearSrc(EV%q_ix,:,j) = 0
         else
-            call GaugeInterface_EvolveTens(EV,tau,yt,tauend,tol1,ind,c,wt)
-
-            call outputt(EV,yt,EV%nvart,tau,ThisSources%LinearSrc(EV%q_ix,CT_Temp,j),&
-                ThisSources%LinearSrc(EV%q_ix,CT_E,j),ThisSources%LinearSrc(EV%q_ix,CT_B,j))
-            call outputt(EV,yt,EV%nvart,j,tau,outT,outE,outB)
+            !call outputt(EV,this,yt,EV%nvart,tau,ThisSources%LinearSrc(EV%q_ix,CT_Temp,j),&
+             !   ThisSources%LinearSrc(EV%q_ix,CT_E,j),ThisSources%LinearSrc(EV%q_ix,CT_B,j))
+            call outputt(EV,this,yt,EV%nvart,tau,outT,outE,outB)
+            ! and
             do f_i=1,nscatter
-                Src(EV%q_ix,1+(f_i-1)*3:3+(f_i-1)*3,j) = [outT(f_i),outE(f_i),outB(f_i)]
+                ThisSources%LinearSrc(EV%q_ix,1+(f_i-1)*3:3+(f_i-1)*3,j) = [outT(f_i),outE(f_i),outB(f_i)]
+            ! and
             end do
         end if
     end do
@@ -1093,9 +1101,11 @@
     end subroutine CalcTensorSources
 
 
-    subroutine CalcVectorSources(EV,taustart)
+    subroutine CalcVectorSources(EV,this,etat,taustart)
     implicit none
     type(EvolutionVars) EV
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     real(dl) tau,tol1,tauend, taustart
     integer j,ind
     real(dl) c(24),wt(EV%nvarv,9), yv(EV%nvarv)
@@ -1116,7 +1126,7 @@
         else
             call dverk(EV,EV%nvarv,derivsv,tau,yv,tauend,tol1,ind,c,EV%nvarv,wt) !tauend
 
-            call outputv(EV,yv,EV%nvarv,tau,ThisSources%LinearSrc(EV%q_ix,CT_Temp,j),&
+            call outputv(EV,this,etat,yv,EV%nvarv,tau,ThisSources%LinearSrc(EV%q_ix,CT_Temp,j),&
                 ThisSources%LinearSrc(EV%q_ix,CT_E,j),ThisSources%LinearSrc(EV%q_ix,CT_B,j))
         end if
     end do
@@ -1124,12 +1134,14 @@
     end subroutine CalcVectorSources
 
 
-    subroutine TransferOut
+    subroutine TransferOut(this,etat)
     !Output transfer functions for k larger than used for C_l computation
     implicit none
     integer q_ix
     real(dl) tau
     type(EvolutionVars) EV
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
 
 
     if (DebugMsgs .and. Feedbacklevel > 0) &
@@ -1150,14 +1162,16 @@
 
         call GetNumEqns(EV)
 
-        call GetTransfer(EV, tau)
+        call GetTransfer(EV,this,etat,tau)
     end do
     !$OMP END PARALLEL DO
 
     end subroutine TransferOut
 
-    subroutine GetTransfer(EV,tau)
+    subroutine GetTransfer(EV,this,etat,tau)
     type(EvolutionVars) EV
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     real(dl) tau
     integer ind, i
     real(dl) c(24),w(EV%nvar,9), y(EV%nvar)
@@ -1171,9 +1185,9 @@
     if (global_error_flag/=0) return
 
     do i=1,State%num_transfer_redshifts
-        call GaugeInterface_EvolveScal(EV,tau,y,State%Transfer_Times(i),atol,ind,c,w)
+        call GaugeInterface_EvolveScal(EV,this,tau,y,State%Transfer_Times(i),atol,ind,c,w)
         if (global_error_flag/=0) return
-        call outtransf(EV,y,tau,State%MT%TransferData(:,EV%q_ix,i))
+        call outtransf(EV,this,etat,y,tau,State%MT%TransferData(:,EV%q_ix,i))
     end do
 
     end subroutine GetTransfer
@@ -2495,6 +2509,7 @@
     Type(ClTransferData) :: CTrans
     external GetInitPowers
     integer j, q_ix
+    real(dl), dimension(:,:,:,:), allocatable :: iCl_tensor_array
     real(dl) nu
     real(dl) apowert,  measure
     real(dl) ctnorm,dbletmp
@@ -2536,9 +2551,9 @@
                     +apowert*CTrans%Delta_p_l_k(CT_Temp,j,q_ix)*CTrans%Delta_p_l_k(CT_E,j,q_ix)*measure
                 do f1=1,num_cmb_freq
                     do f2=1,num_cmb_freq
-                    iCl_tensor_array(j,CT_Temp:CT_B,in,f1,f2) = iCl_tensor_array(j,CT_Temp:CT_B,in,f1,f2) + &
+                    iCl_tensor_array(j,CT_Temp:CT_B,f1,f2) = iCl_tensor_array(j,CT_Temp:CT_B,f1,f2) + &
                          apowert*CTrans%Delta_p_l_k(CT_Temp+(f1)*3:CT_B+(f1)*3,j,q_ix)*CTrans%Delta_p_l_k(CT_Temp+(f2)*3:CT_B+(f2)*3,j,q_ix)*measure
-                    iCl_tensor_array(j,CT_cross, in,f1,f2) = iCl_tensor_array(j,CT_cross, in,f1,f2 ) &
+                    iCl_tensor_array(j,CT_cross,f1,f2) = iCl_tensor_array(j,CT_cross,f1,f2 ) &
                     +apowert*CTrans%Delta_p_l_k(CT_Temp+f1*3,j,q_ix)*CTrans%Delta_p_l_k(CT_E+f2*3,j,q_ix)*measure
                     end do
                 end do
@@ -2548,12 +2563,12 @@
         ctnorm=(CTrans%ls%l(j)*CTrans%ls%l(j)-1)*real((CTrans%ls%l(j)+2)*CTrans%ls%l(j),dl)
         dbletmp=(CTrans%ls%l(j)*(CTrans%ls%l(j)+1))/OutputDenominator*const_pi/4
         iCl_tensor(j, CT_Temp) = iCl_tensor(j, CT_Temp)*dbletmp*ctnorm
-        iCl_tensor_array(j, CT_Temp, in,:,:) = iCl_tensor_array(j, CT_Temp, in,:,:)*dbletmp*ctnorm
+        iCl_tensor_array(j, CT_Temp,:,:) = iCl_tensor_array(j, CT_Temp,:,:)*dbletmp*ctnorm
         if (CTrans%ls%l(j)==1) dbletmp=0
             iCl_tensor(j, CT_E:CT_B) = iCl_tensor(j, CT_E:CT_B)*dbletmp
             iCl_tensor(j, CT_Cross)  = iCl_tensor(j, CT_Cross)*dbletmp*sqrt(ctnorm)
-            iCl_tensor_array(j, CT_E:CT_B, in,:,:) = iCl_tensor_array(j, CT_E:CT_B, in,:,:)*dbletmp
-            iCl_tensor_array(j, CT_Cross, in,:,:)  = iCl_tensor_array(j, CT_Cross, in,:,:)*dbletmp*sqrt(ctnorm)
+            iCl_tensor_array(j, CT_E:CT_B,:,:) = iCl_tensor_array(j, CT_E:CT_B,:,:)*dbletmp
+            iCl_tensor_array(j, CT_Cross,:,:)  = iCl_tensor_array(j, CT_Cross,:,:)*dbletmp*sqrt(ctnorm)
     end do
     !$OMP END PARALLEL DO
 
@@ -2612,6 +2627,7 @@
     integer, dimension(2,2), parameter :: ind = reshape( (/ 1,3,3,2 /), shape(ind))
     ! andrea
     integer f1,f2
+    real(dl), allocatable :: Cl_tensor_freqs(:,:,:,:)
     ! andrea
     !use verbose form above for gfortran consistency  [[1,3],[3,2]]
 
@@ -2634,8 +2650,8 @@
                         else
                             ! andrea
                             if (i<=3+num_cmb_freq*2 .and. j<=3+num_cmb_freq*2 .and. i>3 .and. j>3 .and. (i<=5 .and. j<=5 .or. .not. rayleigh_diff)) then
-                                call InterpolateClArrTemplated(CTransS%ls,iCl_array(1,i,j,in),Cl_scalar_array(lmin, in, i,j), &
-                                CTransS%ls%l0,ind(1+mod(i-4,2),1+mod(j-4,2)))
+                                call lSet%InterpolateClArrTemplated(iCl_array(1,i,j),State%CLData%Cl_scalar_array(lSet%lmin, i,j), &
+                              ind(1+mod(i-4,2),1+mod(j-4,2)))
 
                             else
                                 call lSet%InterpolateClArr(iCl_array(1,i,j), &
@@ -2664,11 +2680,11 @@
                 call ls%InterpolateClArr(iCl_tensor(1,i),State%CLData%Cl_tensor(ls%lmin, i))
             end do
             ! andrea
-            allocate(Cl_tensor_freqs(lmin:CP%Max_l_tensor,CP%InitPower%nn,1:4,num_cmb_freq,num_cmb_freq))
+            allocate(Cl_tensor_freqs(ls%lmin:CP%Max_l_tensor,1:4,num_cmb_freq,num_cmb_freq))
                 do f1=1,num_cmb_freq
                 do f2=1,num_cmb_freq
                 do i = CT_Temp, CT_Cross
-                    call InterpolateClArr(CTransT%ls,iCl_tensor_array(1,i,in,f1,f2),Cl_tensor_freqs(lmin, in, i, f1,f2), CTransT%ls%l0)
+                    call ls%InterpolateClArr(iCl_tensor_array(1,i,f1,f2),Cl_tensor_freqs(ls%lmin, i, f1,f2))
                 end do
                 end do
                 end do
