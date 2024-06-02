@@ -93,7 +93,7 @@ COMPILER = gfortran
 F90C     = gfortran
 COMMON_FFLAGS = -MMD -cpp -ffree-line-length-none -fmax-errors=4 -fopenmp
 # Using -ffast-math causes differences between Debug and Release configurations.
-FFLAGS = -O3 $(COMMON_FFLAGS)
+FFLAGS = -O3 $(COMMON_FFLAGS) -g
 DEBUGFLAGS = -g -fbacktrace -ffpe-trap=invalid,overflow,zero -fbounds-check $(COMMON_FFLAGS)
 ifeq ($(shell uname -s),Darwin)
 SFFLAGS = -dynamiclib #-fpic

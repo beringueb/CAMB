@@ -835,7 +835,10 @@
     !     This subroutine also fixes the timesteps where the sources are
     !     saved in order to do the integration. So TimeSteps is set here.
     !These routines in ThermoData (modules.f90)
-    call State%ThermoData%Init(State,etat,taumin)
+    ! and fix
+    call etat%Init(State,WantTSpin=CP%Do21cm)
+    ! and
+    call State%ThermoData%Init(etat,state,taumin)
     if (global_error_flag/=0) return
 
     if (DebugMsgs .and. Feedbacklevel > 0) write (*,*) 'ThermoData.Init'

@@ -1872,8 +1872,9 @@
             ((ddvisibility(f_i)*polter + 2._dl*dvisibility(f_i)*polterdot + visibility(f_i)*polterddot)  &
             + 4._dl*cothxor*(dvisibility(f_i)*polter + visibility(f_i)*polterdot) - &
             visibility(f_i)*polter*(k2 -6*cothxor**2))
-            dtb(f_i)=15._dl/4._dl*EV%q*State%curvature_radius/k/prefac*(visibility(f_i)*(2._dl*cothxor*polter + polterdot) + dvisibility(f_i)*polter)
-            ! and
+            dtb(f_i)=15._dl/4._dl*EV%q*State%curvature_radius/k/prefac*(visibility(f_i)*(2._dl*cothxor*polter + polterdot) + &
+ dvisibility(f_i)*polter)
+
             if (rayleigh_diff .and. f_i>2) then
                 dt(f_i)= dt(f_i) - dt(1)
                 dte(f_i)= dte(f_i) - dte(1)

@@ -3,6 +3,7 @@
     use MpiUtils
     use interpolation, only : TSpline1D, TCubicSpline, TLogRegularCubicSpline
     use IniObjects
+    use iso_c_binding
     implicit none
 
     Type MatterTransferData

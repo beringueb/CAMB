@@ -663,7 +663,7 @@
     global_error_flag = 0
     outputs = 0
     taustart = min(times(1),GetTauStart(maxval(q)))
-    if (.not. this%ThermoData%HasTHermoData .or. taustart < this%ThermoData%tauminn) call this%ThermoData%Init(this,etat,taustart)
+    if (.not. this%ThermoData%HasTHermoData .or. taustart < this%ThermoData%tauminn) call this%ThermoData%Init(etat,this,taustart)
     !$OMP PARALLEL DO DEFAUlT(SHARED),SCHEDUlE(DYNAMIC), PRIVATE(EV, q_ix)
     do q_ix= 1, nq
         if (global_error_flag==0) then
@@ -698,7 +698,7 @@
         exptau(nscatter)
     integer i, ix
 
-    if (.not. this%ThermoData%HasTHermoData) call this%ThermoData%Init(this,etat,min(1d-3,max(1d-5,minval(times))))
+    if (.not. this%ThermoData%HasTHermoData) call this%ThermoData%Init(etat,this,min(1d-3,max(1d-5,minval(times))))
 
     associate(T=>this%ThermoData)
         allocate(spline_data(T%nthermo), ddxe(T%nthermo), ddTb(T%nthermo))

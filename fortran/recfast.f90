@@ -216,6 +216,7 @@
     use config
     use model
     use splines
+    !use iso_c_binding
     implicit none
     public
 
@@ -225,7 +226,7 @@
     real(dl), parameter ::  zfinal=0._dl
     integer,  parameter :: Nz=10000
     real(dl), parameter :: delta_z = (zinitial-zfinal)/Nz
-
+    !real(dl), private :: zrec(Nz),xrec(Nz),dxrec(Nz), Tsrec(Nz) ,dTsrec(Nz), tmrec(Nz),dtmrec(Nz)
     integer, parameter :: RECFAST_Heswitch_default = 6
     real(dl), parameter :: RECFAST_fudge_He_default = 0.86_dl ! Helium fudge parameter
     logical, parameter  :: RECFAST_Hswitch_default = .true.    ! Include H corrections (v1.5, 2010)
@@ -300,7 +301,8 @@
     Type RecombinationData
         real(dl) :: Recombination_saha_z !Redshift at which saha OK
         real(dl), private :: NNow, fHe
-        real(dl), private :: zrec(Nz),xrec(Nz),dxrec(Nz), Tsrec(Nz) ,dTsrec(Nz), tmrec(Nz),dtmrec(Nz)
+        real(dl), private :: zrec(Nz)
+        real(dl), private :: xrec(Nz),dxrec(Nz), Tsrec(Nz) ,dTsrec(Nz), tmrec(Nz),dtmrec(Nz)
         ! andrea
         real(dl) x_rayleigh_eff(Nz),dx_rayleigh_eff(Nz)
         ! andrea
@@ -979,6 +981,52 @@
 
     end function CAMBdata_DeltaTime
 
+    ! and
+    ! andrea
+    function Recombination_rayleigh_eff(this,a)
+    class(TRecfast) :: this
+    real(dl), intent(in) :: a
+    real(dl) zst,z,az,bz,Recombination_rayleigh_eff
+    integer ilo,ihi
+    z=1/a-1
+    associate(Calc => this%Calc)
+    if (z.ge.Calc%zrec(1)) then
+        !break Recombination_rayleigh_eff
+        Recombination_rayleigh_eff=Calc%x_rayleigh_eff(1)
+    else
+        if (z.le.Calc%zrec(nz)) then
+            Recombination_rayleigh_eff=Calc%x_rayleigh_eff(nz)
+        else
+            zst=(zinitial-z)/delta_z
+            ihi= int(zst)
+            ilo = ihi+1
+            az=zst - int(zst)
+            bz=1-az     
+            Recombination_rayleigh_eff=az*Calc%x_rayleigh_eff(ilo)+bz*Calc%x_rayleigh_eff(ihi)+ &
+            ((az**3-az)*Calc%dx_rayleigh_eff(ilo)+(bz**3-bz)*Calc%dx_rayleigh_eff(ihi))/6._dl
+        endif
+    endif
+    end associate
+    end function Recombination_rayleigh_eff
+
+    function total_scattering_eff(this, State, a)
+    class(TRecfast) :: this
+    class(CAMBdata), intent(in) :: State
+    real(dl), intent(in) :: a
+    real(dl) :: a2, total_scattering_eff
+
+    associate(Calc => this%Calc)
+        if (rayleigh_back_approx) then
+            a2 = a**2
+            total_scattering_eff = this%x_e(a) + this%recombination_rayleigh_eff(a) * ( &
+                min(1._dl, av_freq_factors(1) / a2**2 + av_freq_factors(2) / a2**3 + av_freq_factors(3) / a2**4) )
+        else
+            total_scattering_eff = State%CP%Recomb%x_e(a)
+        end if
+    end associate
+    end function total_scattering_eff
+    ! andrea
+
     subroutine CAMBdata_DeltaTimeArr(this, arr, a1, a2, n, tol)
     class(CAMBdata) :: this
     integer, intent(in) :: n
@@ -1527,7 +1575,6 @@
     real(dl) :: ddamping_da
     real(dl), intent(in) :: a
     real(dl) :: R
-
     R=this%ThermoData%r_drag0*a
     !ignoring reionisation, not relevant for distance measures
     ddamping_da = (R**2 + 16*(1+R)/15)/(1+R)**2*dtauda(this,a)*a**2/(State%total_scattering_eff(this, a)*this%akthom) !BB24
@@ -2075,61 +2122,15 @@
 
     end function Thermo_OpacityToTime
 
-    ! and
-    ! andrea
-
-    function Recombination_rayleigh_eff(this,a)
-    class(TRecfast) :: this
-    real(dl), intent(in) :: a
-    real(dl) zst,z,az,bz,Recombination_rayleigh_eff
-    integer ilo,ihi
-    z=1/a-1
-    associate(Calc => this%Calc)
-    if (z.ge.Calc%zrec(1)) then
-        Recombination_rayleigh_eff=Calc%x_rayleigh_eff(1)
-    else
-        if (z.le.Calc%zrec(nz)) then
-            Recombination_rayleigh_eff=Calc%x_rayleigh_eff(nz)
-        else
-            zst=(zinitial-z)/delta_z
-            ihi= int(zst)
-            ilo = ihi+1
-            az=zst - int(zst)
-            bz=1-az     
-            Recombination_rayleigh_eff=az*Calc%x_rayleigh_eff(ilo)+bz*Calc%x_rayleigh_eff(ihi)+ &
-            ((az**3-az)*Calc%dx_rayleigh_eff(ilo)+(bz**3-bz)*Calc%dx_rayleigh_eff(ihi))/6._dl
-        endif
-    endif
-    end associate
-    end function Recombination_rayleigh_eff
-
-    function total_scattering_eff(this, State, a)
-    class(TRecfast), intent(in) :: this
-    class(CAMBdata), intent(in) :: State
-    real(dl), intent(in) :: a
-    real(dl) :: a2, total_scattering_eff
-
-    associate(Calc => this%Calc)
-        if (rayleigh_back_approx) then
-            a2 = a**2
-            total_scattering_eff = State%CP%Recomb%x_e(a) + this%recombination_rayleigh_eff(a) * ( &
-                min(1._dl, av_freq_factors(1) / a2**2 + av_freq_factors(2) / a2**3 + av_freq_factors(3) / a2**4) )
-        else
-            total_scattering_eff = State%CP%Recomb%x_e(a)
-        end if
-    end associate
-    end function total_scattering_eff
-    ! andrea
-
-    subroutine Thermo_Init(this, State, etat, taumin)
+    subroutine Thermo_Init(this, etat, State, taumin)
     !  Compute and save unperturbed baryon temperature and ionization fraction
     !  as a function of time.  With nthermo=10000, xe(tau) has a relative
     ! accuracy (numerical integration precision) better than 1.e-5.
     use constants
     use StringUtils
     class(TThermoData) :: this
-    class(CAMBdata), target :: State
     class(TRecfast) :: etat
+    class(CAMBdata), target :: State
     !class(TRecfast), allocatable :: Statee
     real(dl), intent(in) :: taumin
     integer nthermo
@@ -2289,8 +2290,9 @@
 
     !$OMP PARALLEL SECTIONS DEFAULT(SHARED)
     !$OMP SECTION
+    !call etat%Init(State,WantTSpin=CP%Do21cm) 
     call CP%Recomb%Init(State,WantTSpin=CP%Do21cm)    !almost all the time spent here
-
+    write(*,*) 'ok'
     if (CP%Evolve_delta_xe) this%recombination_saha_tau  = State%TimeOfZ(CP%Recomb%get_saha_z(), tol=1e-4_dl)
     if (CP%Evolve_baryon_cs .or. CP%Evolve_delta_xe .or. CP%Evolve_delta_Ts .or. CP%Do21cm) &
         this%recombination_Tgas_tau = State%TimeOfz(1/CP%Recomb%min_a_evolve_Tm-1, tol=1e-4_dl)
@@ -2443,7 +2445,6 @@
     this%dotmu(1,2:)=0
     this%scaleFactor(1)=a0
     ! andrea
-
 
     !$OMP PARALLEL DO DEFAULT(SHARED), SCHEDULE(STATIC,16)
     do i=2,nthermo
@@ -2730,7 +2731,9 @@
         !$OMP END PARALLEL DO
         call this%SetTimeStepWindows(State,State%TimeSteps)
     end if
-
+    ! and fix segmentation
+    call etat%Init(State,WantTSpin=CP%Do21cm)
+    ! and
     if (CP%WantDerivedParameters) then
         associate(ThermoDerivedParams => State%ThermoDerivedParams)
             !$OMP PARALLEL SECTIONS DEFAULT(SHARED)
@@ -3917,7 +3920,7 @@
 
     end function TRecfast_version
 
-    subroutine TRecfast_init(this,State, WantTSpin)
+    subroutine TRecfast_init(this, State, WantTSpin)
     use MiscUtils
     implicit none
     class(TRecfast), target :: this
