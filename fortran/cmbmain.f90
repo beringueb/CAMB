@@ -830,7 +830,7 @@
     end if
 
     taumin=GetTauStart(maxq)
-
+    !write(*,*) 'taumin Initvars = ', taumin
     !     Initialize baryon temperature and ionization fractions vs. time.
     !     This subroutine also fixes the timesteps where the sources are
     !     saved in order to do the integration. So TimeSteps is set here.
@@ -1018,7 +1018,7 @@
         if  (CP%Transfer%high_precision) tol1=tol1/100
         do while (itf <= State%num_transfer_redshifts .and. State%TimeSteps%points(2) > State%Transfer_Times(itf))
             !Just in case someone wants to get the transfer outputs well before recombination
-            call GaugeInterface_EvolveScal(EV,this,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
+            call GaugeInterface_EvolveScal(EV,this,etat,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
             if (global_error_flag/=0) return
             call outtransf(EV, this, etat, y, tau, State%MT%TransferData(:,EV%q_ix,itf))
             itf = itf+1
@@ -1033,17 +1033,19 @@
             ThisSources%LinearSrc(EV%q_ix,:,j)=0
         else
             !Integrate over time, calulate end point derivs and calc output
-            call GaugeInterface_EvolveScal(EV,this,tau,y,tauend,tol1,ind,c,w)
+            write(*,*) 'cambmain : tau, j ici :  = ', tau,j
+            call GaugeInterface_EvolveScal(EV,this, etat, tau,y,tauend,tol1,ind,c,w)
             if (global_error_flag/=0) return
 
             call output(EV,this,etat,y,j, tau,sources, CP%CustomSources%num_custom_sources)
             ThisSources%LinearSrc(EV%q_ix,:,j)=sources
+            write(*,*) 'cambmain : tau, j ici2 :  = ', tau,j
 
             !     Calculation of transfer functions.
 101         if (CP%WantTransfer.and.itf <= State%num_transfer_redshifts) then
                 if (j < State%TimeSteps%npoints) then
                     if (tauend < State%Transfer_Times(itf) .and. State%TimeSteps%points(j+1)  > State%Transfer_Times(itf)) then
-                        call GaugeInterface_EvolveScal(EV,this,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
+                        call GaugeInterface_EvolveScal(EV,this,etat,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
                         if (global_error_flag/=0) return
                     endif
                 end if
@@ -1188,7 +1190,7 @@
     if (global_error_flag/=0) return
 
     do i=1,State%num_transfer_redshifts
-        call GaugeInterface_EvolveScal(EV,this,tau,y,State%Transfer_Times(i),atol,ind,c,w)
+        call GaugeInterface_EvolveScal(EV,this,etat,tau,y,State%Transfer_Times(i),atol,ind,c,w)
         if (global_error_flag/=0) return
         call outtransf(EV,this,etat,y,tau,State%MT%TransferData(:,EV%q_ix,i))
     end do

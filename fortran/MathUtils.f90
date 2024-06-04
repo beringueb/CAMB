@@ -10,6 +10,15 @@
     END FUNCTION  obj_function
     end interface
 
+    interface
+    FUNCTION obj_function2(obj1, obj2, x)
+    use precision
+    class(*) :: obj1
+    class(*) :: obj2
+    real(dl) :: x, obj_function2
+    END FUNCTION  obj_function2
+    end interface
+
     contains
 
     function Integrate_Romberg(obj, fin, a, b, tol, maxit, minsteps, abs_tol)
@@ -90,6 +99,89 @@
     end if
 
     end function Integrate_Romberg
+
+    function Integrate_Romberg2(obj1, obj2, fin, a, b, tol, maxit, minsteps, abs_tol)
+    !  Rombint returns the integral from a to b of f(obj,x) using Romberg integration.
+    !  The method converges provided that f is continuous in (a,b).
+    !  f must be real(dl). The first argument is a class instance.
+    !  tol indicates the desired relative accuracy in the integral.
+
+    ! Modified by AL to specify max iterations and minimum number of steps
+    ! (min steps useful to stop wrong results on periodic or sharp functions)
+    use iso_c_binding
+    use MiscUtils
+    use config, only : global_error_flag
+    ! and
+    class(*) :: obj1
+    class(*) :: obj2
+    ! and
+    real(dl), external :: fin !a class function
+    procedure(obj_function2), pointer :: f
+    !write(*,*) "Address of the function pointer f:", c_funloc(fin)
+    real(dl), intent(in) :: a,b,tol
+    integer, intent(in), optional :: maxit,minsteps
+    logical, intent(in), optional :: abs_tol
+    integer max_it, min_steps
+    real(dl) :: Integrate_Romberg2
+    integer, parameter :: MAXJ=5
+    integer :: nint, i, k, jmax, j
+    real(dl) :: h, gmax, error, g(MAXJ+1), g0, g1, fourj
+    logical abstol
+
+    !convert the class function (un-type-checked) into correct type to call correctly for class argument
+    call C_F_PROCPOINTER(c_funloc(fin), f)
+    Integrate_Romberg2 = -1
+    max_it = PresentDefault(25, maxit)
+    min_steps = PresentDefault(0, minsteps)
+    abstol = DefaultFalse(abs_tol)
+    h=0.5d0*(b-a)
+    gmax=h*(f(obj1,obj2,a)+f(obj1,obj2,b))
+    if (global_error_flag /=0) return
+    g(1)=gmax
+    nint=1
+    error=1.0d20
+    i=0
+    do
+        i=i+1
+        if (i > max_it.or.(i > 5.and.abs(error) < tol) .and. nint > min_steps) exit
+        !  Calculate next trapezoidal rule approximation to integral.
+        g0=0._dl
+        do k=1,nint
+            g0=g0+f(obj1, obj2, a+(k+k-1)*h)
+            if (global_error_flag /=0) return
+        end do
+        g0=0.5d0*g(1)+h*g0
+        h=0.5d0*h
+        nint=nint+nint
+        jmax=min(i,MAXJ)
+        fourj=1._dl
+        do j=1,jmax
+            !  Use Richardson extrapolation.
+            fourj=4._dl*fourj
+            g1=g0+(g0-g(j))/(fourj-1._dl)
+            g(j)=g0
+            g0=g1
+        end do
+        if (abstol) then
+            error=abs(gmax-g0)
+        else
+            if (abs(g0).gt.tol) then
+                error=1._dl-gmax/g0
+            else
+                error=gmax
+            end if
+        end if
+        gmax=g0
+        g(jmax+1)=g0
+    end do
+
+    Integrate_Romberg2=g0
+    if (i > max_it .and. abs(error) > tol)  then
+        write(*,*) 'Warning: Integrate_Romberg2 failed to converge; '
+        write (*,*)'integral, error, tol:', Integrate_Romberg2,error, tol
+    end if
+
+    end function Integrate_Romberg2
 
 
     subroutine brentq(obj,func,ax,bx,tol,xzero,fzero,iflag,fax,fbx)

@@ -1570,16 +1570,25 @@
     end function
 
     function ddamping_da(this, State, a)
-    class(CAMBdata) :: this
-    class(Trecfast) :: State
+    !function ddamping_da(this, a)
+    class(CAMBdata), intent(in) :: this
+    class(TRecfast), intent(in) :: State
+    !class(TThermoData), intent(in) :: etat
     real(dl) :: ddamping_da
     real(dl), intent(in) :: a
     real(dl) :: R
+
     R=this%ThermoData%r_drag0*a
     !ignoring reionisation, not relevant for distance measures
-    ddamping_da = (R**2 + 16*(1+R)/15)/(1+R)**2*dtauda(this,a)*a**2/(State%total_scattering_eff(this, a)*this%akthom) !BB24
+    ddamping_da = (R**2 + 16*(1+R)/15)/(1+R)**2*dtauda(this,a)*a**2/(State%total_scattering_eff(this,a)*this%akthom)
+    !ddamping_da = (R**2 + 16*(1+R)/15)/(1+R)**2*dtauda(this,a)*a**2/this%akthom
 
     end function ddamping_da
+
+    !function test(this)
+    !class(CAMBdata) :: this
+    !end function test
+
 
     function noreion_doptdepth_dz(this,z)
     class(CAMBdata) :: this
@@ -2000,21 +2009,22 @@
         !Compute unperturbed sound speed squared,
         !and ionization fraction by interpolating pre-computed tables.
         !If requested also get time derivative of opacity
+        implicit none
         class(TThermoData) :: this
-        real(dl), intent(in) :: tau
-        real(dl), intent(out) :: a, cs2b
-        real(dl), intent(out) :: opacity(nscatter)
+        real(dl) :: tau
+        real(dl) :: a, cs2b
+        real(dl) :: opacity(nscatter)
         real(dl), intent(out), optional :: dopacity(nscatter)
-    
         integer i
         real(dl) d
-    
+
+        write(*,*) 'thermo_values_array : tau, tauminn = ', tau, this%tauminn
         d=log(tau/this%tauminn)/this%dlntau+1._dl
         i=int(d)
         d=d-i
         if (i < 1) then
             !Linear interpolation if out of bounds (should not occur).
-            write(*,*) 'tau, taumin = ', tau, this%tauminn
+            write(*,*) 'tau, taumin, i  = ', tau, this%tauminn, i
             call MpiStop('thermo out of bounds')
         else if (i >= this%nthermo) then
             cs2b=this%cs2(this%nthermo)
@@ -2042,6 +2052,8 @@
             end if
         end if
     end subroutine Thermo_values_array
+
+
     
     subroutine Thermo_expansion_values(this, tau, a, adot, opacity)
         class(TThermoData) :: this
@@ -2132,7 +2144,7 @@
     class(TRecfast) :: etat
     class(CAMBdata), target :: State
     !class(TRecfast), allocatable :: Statee
-    real(dl), intent(in) :: taumin
+    real(dl) :: taumin
     integer nthermo
     real(dl) tau01,a0,barssc,dtau
     real(dl) tau,a,a2
@@ -2172,7 +2184,6 @@
     ! Allocate memory for Statee
     !allocate(Statee)
     ! andrea
-
     CP => State%CP
     if (num_cmb_freq<10) then
         phot_freqs(1:6) = [0, 143, 217,353, 545, 857]
@@ -2226,8 +2237,11 @@
         write(*,*) 'e.g. around reionization if not matched very smoothly'
     end if
     !Higher q starts earlier; scale by log(taumin) so actual step size is not made worse by increasing k_max
+    ! and taumin ou tauminn à checker
     nthermo = nint(thermal_history_def_timesteps*log(1.4e4/taumin)/log(1.4e4/2e-4)*background_boost)
+    ! and
     this%tauminn=0.95d0*taumin
+    write(*,*) 'tauminn thermo_init = ',this%tauminn
     this%dlntau=log(State%tau0/this%tauminn)/(nthermo-1)
 
     do RW_i = 1, State%num_redshiftwindows
@@ -2746,8 +2760,10 @@
             !$OMP SECTION
             rs =State%sound_horizon(this%z_drag)
             ThermoDerivedParams( derived_rdrag ) = rs
+            ! and
             ThermoDerivedParams( derived_kD ) =  &
-                sqrt(1.d0/(Integrate_Romberg(State,ddamping_da, 1d-8, 1/(this%z_star+1), 1d-6)/6))
+                sqrt(1.d0/(Integrate_Romberg2(State,etat,ddamping_da, 1d-8, 1/(this%z_star+1), 1d-6)/6))
+            ! and
             !$OMP SECTION
             ThermoDerivedParams( derived_zEQ ) = State%z_eq
             a_eq = 1/(1+State%z_eq)
@@ -3721,7 +3737,7 @@
         !Compute unperturbed sound speed squared,
         !and ionization fraction by interpolating pre-computed tables.
         !If requested also get time derivative of opacity
-        class(TThermoData), intent(in) :: this
+        class(TThermoData) :: this
         real(dl), intent(in) :: tau
         real(dl), intent(out) :: a, cs2b
         real(dl), intent(out) :: opacity(nscatter)
