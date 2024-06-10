@@ -261,15 +261,8 @@
     class(TRecfast) :: etat
     real(dl) c1(24),w(EV%nvar,9), y(EV%nvar), tol1, tau, tauend
     integer ind
-    !write(*,*) 'GaugeInterface_ScalEv: tau, tauminn = ', tau, this%tauminn
-    !write(*,*) 'gaugeInterface_ScalEv : tau' , tau
-    !write(*,*) 'gaugeInterface_ScalEv : ind =' , ind
-    !write(*,*) 'tau,tauend,tol1,ind,,EVnvar = ', tau,tauend,tol1,ind,EV%nvar
-    !call dverk(EV, EV%ScalEqsToPropagate,derivs,tau,y,tauend,tol1,ind,c1,EV%nvar,w)$
-    !write(*,*) 'GaugeScalEv : tau, taumin = ', tau, this%tauminn
     call dverk_derivs(EV, this, etat, EV%ScalEqsToPropagate, tau,y,tauend,tol1,ind,c1,EV%nvar,w)
     if (ind==-3) then
-        !write(*,*) 'gaugeInterface_ScalEv : ind =' , ind
         call GlobalError('Dverk error -3: the subroutine was unable  to  satisfy  the  error ' &
             //'requirement  with a particular step-size that is less than or * ' &
             //'equal to hmin, which may mean that tol is too small' &
@@ -332,8 +325,6 @@
     !Sources
     tau_switch_saha=noSwitch
     ! and
-    !write(*,*) 'saha tau', EV%ThermoData%recombination_saha_tau
-    !write(*,*) 'tgas_tau', EV%ThermoData%recombination_Tgas_tau
     if (CP%Evolve_delta_xe .and. EV%saha)  tau_switch_saha = this%recombination_saha_tau
     tau_switch_evolve_TM=noSwitch
     if (EV%Evolve_baryon_cs .and. .not. EV%Evolve_tm) tau_switch_evolve_TM = this%recombination_Tgas_tau
@@ -356,38 +347,25 @@
             end if
         end do
     end if
-    !write(*,*) 'taurend, matterverydom : ', State%taurend, this%matter_verydom_tau
-    !write(*,*) 'EV%matterverydom : ', EV%ThermoData%matter_verydom_tau
-    !write(*,*) 'EV%matterverydom : ', this%matter_verydom_tau
-    !write(*,*) 'min : ', min(State%taurend,this%matter_verydom_tau)
-    !EV%ThermoData%matter_verydom_tau = this%matter_verydom_tau
     if (CP%DoLateRadTruncation) then
         if (.not. EV%no_nu_multpoles) & !!.and. .not. EV%has_nu_relativistic .and. tau_switch_nu_massless ==noSwitch)  &
             tau_switch_no_nu_multpoles= &
-            max(15/EV%k_buf*CP%Accuracy%AccuracyBoost,min(State%taurend,EV%ThermoData%matter_verydom_tau))
+            max(15/EV%k_buf*CP%Accuracy%AccuracyBoost,min(State%taurend,this%matter_verydom_tau))
 
         if (.not. EV%no_phot_multpoles .and. (.not.CP%WantCls .or. EV%k_buf>0.03*CP%Accuracy%AccuracyBoost)) &
             tau_switch_no_phot_multpoles =max(15/EV%k_buf,State%taurend)*CP%Accuracy%AccuracyBoost
     end if
     ! andrea
-    !next_switch = min(tau_switch_ktau, tau_switch_nu_massless, EV%TightSwitchoffTime, tau_switch_nu_massive, &
-                  !tau_switch_no_nu_multpoles, tau_switch_no_phot_multpoles, tau_switch_nu_nonrel, &
-                  !EV%RayleighSwitchOnTime, noSwitch, tau_switch_saha, tau_switch_evolve_TM)
     next_switch = min(tau_switch_ktau, tau_switch_nu_massless, EV%TightSwitchoffTime, tau_switch_nu_massive, &
                   tau_switch_no_nu_multpoles, tau_switch_no_phot_multpoles, tau_switch_nu_nonrel, &
-                  noSwitch, tau_switch_saha, tau_switch_evolve_TM)
-
+                  EV%RayleighSwitchOnTime, noSwitch, tau_switch_saha, tau_switch_evolve_TM)
     !andrea
     if (next_switch < tauend) then
         if (next_switch > tau+smallTime) then
-            !write(*,*) 'EvolveScal: tau = ', tau
-            !write(*,*) 'GaugeEvolve : tau, tauminn = ', tau, this%tauminn
             call GaugeInterface_ScalEv(EV, this, etat, y, tau,next_switch,tol1,ind,c1,w)
             if (global_error_flag/=0) return
         end if
-
         EVout=EV
-
         if (next_switch == EV%TightSwitchoffTime) then
             !TightCoupling
             EVout%TightCoupling=.false.
@@ -400,7 +378,6 @@
             !Set up variables with their tight coupling values
             y(EV%g_ix+2) = EV%pig
             call this%values(tau,a, cs2,opacity,dopacity)
-
             if (second_order_tightcoupling) then
                 ! Francis-Yan Cyr-Racine November 2010
 
@@ -418,18 +395,18 @@
                 y(EV%polind+2) = EV%pig/4
                 y(EV%polind+3) =y(EV%g_ix+3)/4
             end if
-        else if (next_switch==tau_switch_ktau) then
-            ! andrea
-            !else if (next_switch == EV%RayleighSwitchOnTime) then
-                 !EVout%RayleighSwitchOnTime = noSwitch
-                ! EVout%Rayleigh = .true.
-               !  call SetupScalarArrayIndices(EVout)
-              !   call CopyScalarVariableArray(y,yout, EV, EVout)
-             !    EV=EVout
-            !     y=yout
-           !     ind=1
+        ! andrea
+        else if (next_switch == EV%RayleighSwitchOnTime) then
+            EVout%RayleighSwitchOnTime = noSwitch
+            EVout%Rayleigh = .true.
+            call SetupScalarArrayIndices(EVout)
+            call CopyScalarVariableArray(y,yout, EV, EVout)
+            EV=EVout
+            y=yout
+            ind=1
             ! andrea
             !k tau >> 1, evolve massless neutrino effective fluid up to l=2
+        else if (next_switch==tau_switch_ktau) then
             EVout%high_ktau_neutrino_approx=.true.
             EVout%nq(1:CP%Nu_mass_eigenstates) = State%NuPerturbations%nqmax
             call SetupScalarArrayIndices(EVout)
@@ -439,8 +416,6 @@
         else if (next_switch == tau_switch_nu_massless) then
             !Mass starts to become important, start evolving next momentum mode
             do nu_i = 1, CP%Nu_mass_eigenstates
-                !write(*,*) 'EVOut%nq(nu_i)', EVOut%nq(nu_i)
-                !write(*,*) 'next_nu_nq(EV%nq(nu_i))', next_nu_nq(EV%nq(nu_i))
                 if (EV%nq(nu_i) /= State%NuPerturbations%nqmax) then
                     if (next_switch == nu_tau_notmassless(next_nu_nq(EV%nq(nu_i)),nu_i)) then
                         EVOut%nq(nu_i) = next_nu_nq(EV%nq(nu_i))
@@ -2453,8 +2428,6 @@
     !  Get background scale factor, sound speed and ionisation fraction.
     if (EV%TightCoupling) then
     ! and
-        !write(*,*) 'equations.f90 : tau = ', tau
-        !write(*,*) 'equations.f90 : n = ', tau
         call this%Values_array(tau,a,cs2,opacity,dopacity)
     else
         call this%Values_array(tau,a,cs2,opacity)
@@ -3968,7 +3941,6 @@
     !     * begin initialization, parameter checking, interrupt re-entries *
     !     ******************************************************************
     !
-    !write(*,*) 'dverk_derivs : tau, taumin = ', x, this%tauminn
     !  ......abort if ind out of range 1 to 6
     if (ind.lt.1 .or. ind.gt.6) go to 500
     !
@@ -4729,7 +4701,6 @@
     !     * begin initialization, parameter checking, interrupt re-entries *
     !     ******************************************************************
     !
-    !write(*,*) 'dverk3 : tau, taumin = ', x, this%tauminn
     !  ......abort if ind out of range 1 to 6
     if (ind.lt.1 .or. ind.gt.6) go to 500
     !
@@ -5490,7 +5461,6 @@
     !     * begin initialization, parameter checking, interrupt re-entries *
     !     ******************************************************************
     !
-    !write(*,*) 'dverk3 : tau, taumin = ', x, this%tauminn
     !  ......abort if ind out of range 1 to 6
     if (ind.lt.1 .or. ind.gt.6) go to 500
     !

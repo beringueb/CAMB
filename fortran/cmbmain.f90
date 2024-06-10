@@ -739,7 +739,7 @@
     EV%q_ix = q_ix
     EV%TransferOnly=.false.
     ! and
-    EV%ThermoData => State%ThermoData
+    !EV%ThermoData => State%ThermoData
     ! and
     taustart = GetTauStart(EV%q)
 
@@ -1171,7 +1171,7 @@
         EV%q2=EV%q**2
         EV%q_ix = q_ix
         ! and
-        EV%ThermoData => State%ThermoData
+        !EV%ThermoData => State%ThermoData
         ! and
 
         tau = GetTauStart(EV%q)
