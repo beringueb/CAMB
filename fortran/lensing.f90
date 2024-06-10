@@ -37,7 +37,7 @@
 
     module lensing
     use Precision
-    use recombination
+    use Recombination
     use constants, only : const_pi, const_twopi, const_fourpi
     use splines
     implicit none
@@ -155,8 +155,8 @@
     real(dl) xl(lmax)
     real(dl), allocatable :: ddcontribs(:,:),corrcontribs(:,:)
     real(dl), allocatable :: lens_contrib(:,:,:)
-    real(dl), allocatable :: Cl_lensed_freqs(:,:,:,:)
-    real(dl), allocatable :: Cl_Scalar_Array(:,:,:)
+    !real(dl), allocatable :: Cl_lensed_freqs(:,:,:,:)
+    !real(dl), allocatable :: Cl_Scalar_Array(:,:,:)
     integer thread_ix
     real(dl) pmm, pmmp1
     real(dl) d4m4,d11,dm11,d2m2,d22,d20,d23,d2m3,d33,d3m3,d04,d1m2,d12,d13,d1m3,d2m4
@@ -240,7 +240,7 @@
         allocate(ddcontribs(lmax,4),corrcontribs(lmax,4))
         ! andrea
         if (nscatter>1) then
-            allocate(Cl_lensed_freqs(lmin:CLout%lmax_lensed,1:4,num_cmb_freq,num_cmb_freq))
+            allocate(CL%Cl_lensed_freqs(lmin:CLout%lmax_lensed,1:4,num_cmb_freq,num_cmb_freq))
         end if
 
         do f_i_1=nscatter,1,-1
@@ -253,10 +253,11 @@
             Cphil3(l) = CPP(l)*(l+0.5_dl)/real((l+1)*l, dl)
             fac = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
             ! andrea
+            !write(*,*) 'Cl_Scalar_Array', CL%Cl_Scalar_Array(1,1,1)
             if (f_i_2>1 .or. f_i_2>1) then
-            CTT(l) =   Cl_Scalar_Array(l,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)*fac
-            CEE(l) =   Cl_Scalar_Array(l,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
-            CTE(l) =   Cl_Scalar_Array(l,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
+            CTT(l) =   CL%Cl_Scalar_Array(l,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)*fac
+            CEE(l) =   CL%Cl_Scalar_Array(l,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
+            CTE(l) =   CL%Cl_Scalar_Array(l,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)*fac
             else
             ! andrea
             CTT(l) =  CL%Cl_scalar(l,C_Temp)*fac
@@ -547,13 +548,13 @@
             do l=lmin, CLout%lmax_lensed
             !sign from d(cos theta) = -sin theta dtheta
                 fac = l*(l+1)/OutputDenominator*dtheta *2*const_pi
-                Cl_lensed_freqs(l,CT_Temp,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Temp,l,:))*fac &
-                 +  Cl_Scalar_Array(l,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)
-                Cl_lensed_freqs(l,CT_E,f_i_1-1,f_i_2-1)=sum(lens_contrib(CT_E,l,:))*fac &
-                 +  Cl_Scalar_Array(l,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
-                Cl_lensed_freqs(l,CT_B,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_B,l,:))*fac
-                Cl_lensed_freqs(l,CT_Cross,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Cross,l,:))*fac &
-                 +  Cl_Scalar_Array(l,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
+                CL%Cl_lensed_freqs(l,CT_Temp,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Temp,l,:))*fac &
+                 +  CL%Cl_Scalar_Array(l,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)
+                CL%Cl_lensed_freqs(l,CT_E,f_i_1-1,f_i_2-1)=sum(lens_contrib(CT_E,l,:))*fac &
+                 +  CL%Cl_Scalar_Array(l,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
+                CL%Cl_lensed_freqs(l,CT_B,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_B,l,:))*fac
+                CL%Cl_lensed_freqs(l,CT_Cross,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Cross,l,:))*fac &
+                 +  CL%Cl_Scalar_Array(l,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
             end do
         else
         ! andrea

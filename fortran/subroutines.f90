@@ -124,6 +124,7 @@
     !This version is modified to pass an object parameter to the function on each call
     !Fortunately Fortran doesn't do type checking on functions, so we can pretend the
     !passed object parameter (EV) is any type we like. In reality it is just a pointer.
+
     subroutine dverk (EV,n, fcn, x, y, xend, tol, ind, c, nw, w)
     use Precision
     use MpiUtils
@@ -549,9 +550,7 @@
     !
     !           calculate slope (adding 1 to no of fcn evals) if ind .ne. 6
     if (ind .eq. 6) go to 105
-    write(*,*) 'subroutine.F90: tau1 = ', x
     call fcn(EV,n, x, y, w(1,1))
-    write(*,*) 'subroutine.F90: tau1 post= ', x
     c(24) = c(24) + 1._dl
 105 continue
     !
@@ -689,14 +688,12 @@
     do 200 k = 1, n
         w(k,9) = y(k) + temp*w(k,1)*233028180000._dl
 200 continue
-    write(*,*) 'subroutine.F90: tau2 = ', x
     call fcn(EV,n, x + c(18)/6._dl, w(1,9), w(1,2))
     !
     do 205 k = 1, n
         w(k,9) = y(k) + temp*(   w(k,1)*74569017600._dl &
             + w(k,2)*298276070400._dl  )
 205 continue
-    write(*,*) 'subroutine.F90: tau3 = ', x
     call fcn(EV,n, x + c(18)*(4._dl/15._dl), w(1,9), w(1,3))
     !
     do 210 k = 1, n
@@ -704,7 +701,6 @@
             - w(k,2)*3728450880000._dl &
             + w(k,3)*3495422700000._dl )
 210 continue
-    write(*,*) 'subroutine.F90: tau4 = ', x
     call fcn(EV,n, x + c(18)*(2._dl/3._dl), w(1,9), w(1,4))
     !
     do 215 k = 1, n
@@ -741,7 +737,6 @@
             + w(k,5)*400298976000._dl &
             + w(k,7)*201586000000._dl  )
 230 continue
-    write(*,*) 'subroutine.F90: tau5 = ', x
     call fcn(EV,n, x + c(18), w(1,9), w(1,8))
     !
     !           calculate ytrial, the extrapolated approximation and store
@@ -886,5 +881,4 @@
     write (*,*) 'Error in dverk, x =',x, 'xend=', xend
     call GlobalError('DVERK error', error_evolution)
     !
-    write(*,*) 'subroutine end : tau  = ', tau
     end subroutine dverk

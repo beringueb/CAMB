@@ -257,16 +257,17 @@
 
     end function CAMBdata_GetTransfers
 
-    function CAMBdata_CalcBackgroundTheory(State, P, etat) result(error)
+    function CAMBdata_CalcBackgroundTheory(State, P, this, etat) result(error)
     use cambmain, only: initvars
     Type (CAMBdata):: State
     type(CAMBparams) :: P
+    class(TThermoData) :: this
     class(TRecfast) :: etat
     integer error
 
     global_error_flag = 0
     call State%SetParams(P)
-    if (global_error_flag==0) call InitVars(State,etat) !calculate thermal history, e.g. z_drag etc.
+    if (global_error_flag==0) call InitVars(this,State, etat) !calculate thermal history, e.g. z_drag etc.
     error=global_error_flag
 
     end function CAMBdata_CalcBackgroundTheory
@@ -582,11 +583,10 @@
     real(dl), target :: sources(nsources), custom_sources(ncustomsources)
     real, target :: Arr(Transfer_max)
     procedure(obj_function) :: dtauda
-
     w=0
     y=0
     taustart = GetTauStart(min(500._dl,EV%q))
-    call initial(EV,y, taustart)
+    call initial(EV, this, y, taustart)
 
     tau=taustart
     ind=1
@@ -601,9 +601,9 @@
         EV%OutputSources => sources
         EV%OutputStep = 0
         if (ncustomsources>0) EV%CustomSources => custom_sources
-        call derivs(EV,this,etat,EV%ScalEqsToPropagate,tau,y,yprime)
+        call derivs(EV, this, etat, EV%ScalEqsToPropagate,tau,y,yprime)
         nullify(EV%OutputTransfer, EV%OutputSources, EV%CustomSources)
-        call State%ThermoData%Values(tau,a, cs2,opacity)
+        call thisValues(tau,a, cs2,opacity)
         outputs(1:Transfer_Max, j, EV%q_ix) = Arr
         outputs(Transfer_Max+1, j, EV%q_ix) = a
         outputs(Transfer_Max+2, j, EV%q_ix) = y(ix_etak) !etak
@@ -663,7 +663,7 @@
     global_error_flag = 0
     outputs = 0
     taustart = min(times(1),GetTauStart(maxval(q)))
-    if (.not. this%ThermoData%HasTHermoData .or. taustart < this%ThermoData%tauminn) call this%ThermoData%Init(etat,this,taustart)
+    if (.not. est%HasTHermoData .or. taustart < est%tauminn) call est%Init(etat,this,taustart)
     !$OMP PARALLEL DO DEFAUlT(SHARED),SCHEDUlE(DYNAMIC), PRIVATE(EV, q_ix)
     do q_ix= 1, nq
         if (global_error_flag==0) then
@@ -671,7 +671,9 @@
             EV%q = q(q_ix)
             EV%TransferOnly=.false.
             EV%q2=EV%q**2
-            EV%ThermoData => this%ThermoData
+            ! and
+            !est%ThermoData => this%ThermoData
+            ! and
             call GetNumEqns(EV)
             call GetOutputEvolutionFork(State, EV, est, etat, times, outputs, 3, ncustomsources)
         end if
@@ -698,48 +700,54 @@
         exptau(nscatter)
     integer i, ix
 
-    if (.not. this%ThermoData%HasTHermoData) call this%ThermoData%Init(etat,this,min(1d-3,max(1d-5,minval(times))))
+    if (.not. est%HasTHermoData) call est%Init(etat,this,min(1d-3,max(1d-5,minval(times))))
 
-    associate(T=>this%ThermoData)
-        allocate(spline_data(T%nthermo), ddxe(T%nthermo), ddTb(T%nthermo))
-        call splini(spline_data,T%nthermo)
-        call splder(T%xe,ddxe,T%nthermo,spline_data)
-        call splder(T%Tb,ddTb,T%nthermo,spline_data)
+    ! and
+    !associate(T=>this%ThermoData)
+    !associate(T=>est)
+    !and
+
+    allocate(spline_data(est%nthermo), ddxe(est%nthermo), ddTb(est%nthermo))
+    call splini(spline_data,est%nthermo)
+    call splder(est%xe,ddxe,est%nthermo,spline_data)
+    call splder(est%Tb,ddTb,est%nthermo,spline_data)
 
         outputs = 0
-        do ix = 1, ntimes
-            tau = times(ix)
-            if (tau < T%tauminn*1.01) cycle
-            d=log(tau/T%tauminn)/T%dlntau+1._dl
-            i=int(d)
-            d=d-i
-            call T%Values(tau,a,cs2b, opacity)
-            call T%IonizationFunctionsAtTime(tau, a, opacity, dopacity, ddopacity, &
+    do ix = 1, ntimes
+        tau = times(ix)
+        if (tau < est%tauminn*1.01) cycle
+        d=log(tau/est%tauminn)/est%dlntau+1._dl
+        i=int(d)
+        d=d-i
+        call est%Values(tau,a,cs2b, opacity)
+        call est%IonizationFunctionsAtTime(tau, a, opacity, dopacity, ddopacity, &
                 visibility, dvisibility, ddvisibility, exptau, lenswindow)
 
-            if (i < T%nthermo) then
-                outputs(1,ix)=T%xe(i)+d*(ddxe(i)+d*(3._dl*(T%xe(i+1)-T%xe(i)) &
-                    -2._dl*ddxe(i)-ddxe(i+1)+d*(ddxe(i)+ddxe(i+1) &
-                    +2._dl*(T%xe(i)-T%xe(i+1)))))
-                Tbaryon = T%tb(i)+d*(ddtb(i)+d*(3._dl*(T%tb(i+1)-T%tb(i)) &
-                    -2._dl*ddtb(i)-ddtb(i+1)+d*(ddtb(i)+ddtb(i+1) &
-                    +2._dl*(T%tb(i)-T%tb(i+1)))))
-            else
-                outputs(1,ix)=T%xe(T%nthermo)
-                Tbaryon = T%Tb(T%nthermo)
-            end if
-            ! and ?
-            outputs(2, ix) = opacity(1)
-            outputs(3, ix) = visibility(1)
-            outputs(4, ix) = cs2b
-            outputs(5, ix) = Tbaryon
-            outputs(6, ix) = dopacity(1)
-            outputs(7, ix) = ddopacity(1)
-            outputs(8, ix) = dvisibility(1)
-            outputs(9, ix) = ddvisibility(1)
-            ! and
-        end do
-    end associate
+        if (i < est%nthermo) then
+            outputs(1,ix)=est%xe(i)+d*(ddxe(i)+d*(3._dl*(est%xe(i+1)-est%xe(i)) &
+                -2._dl*ddxe(i)-ddxe(i+1)+d*(ddxe(i)+ddxe(i+1) &
+                +2._dl*(est%xe(i)-est%xe(i+1)))))
+            Tbaryon = est%tb(i)+d*(ddtb(i)+d*(3._dl*(est%tb(i+1)-est%tb(i)) &
+                -2._dl*ddtb(i)-ddtb(i+1)+d*(ddtb(i)+ddtb(i+1) &
+                +2._dl*(est%tb(i)-est%tb(i+1)))))
+        else
+            outputs(1,ix)=est%xe(est%nthermo)
+            Tbaryon = est%Tb(est%nthermo)
+        end if
+        ! and ?
+        outputs(2, ix) = opacity(1)
+        outputs(3, ix) = visibility(1)
+        outputs(4, ix) = cs2b
+        outputs(5, ix) = Tbaryon
+        outputs(6, ix) = dopacity(1)
+        outputs(7, ix) = ddopacity(1)
+        outputs(8, ix) = dvisibility(1)
+        outputs(9, ix) = ddvisibility(1)
+        ! and
+    end do
+    ! and
+    !end associate
+    ! and
 
     end subroutine GetBackgroundThermalEvolution
 

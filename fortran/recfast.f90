@@ -497,7 +497,7 @@
         real(dl) , dimension (:,:), allocatable :: Cl_lensed
         !Cl_lensed(l, Cl_type) are the interpolated Cls
         ! andrea
-        real(dl) , dimension (:,:,:,:,:), allocatable :: Cl_lensed_freqs, Cl_tensor_freqs
+        real(dl) , dimension (:,:,:,:), allocatable :: Cl_lensed_freqs, Cl_tensor_freqs
         ! andrea
     contains
     procedure :: InitCls => TCLdata_InitCls
@@ -641,23 +641,51 @@
     end interface
 
     !procedure(obj_function), private :: dtauda
-
-    ! and
-    !interface
-    !subroutine Thermo_values(this, tau, a, cs2, opacity)
-    !    use precision
-    !    type(ThermoData), intent(in) :: this
-    !    real(dl), intent(in) :: tau
-    !    real(dl), intent(out) :: a
-    !    real(dl), intent(out) :: cs2
-    !    real(dl), intent(out) :: opacity
-    !    integer i
-    !    real(dl) d
-    !end subroutine Thermo_values
-    !end interface
-    ! and
-
+    
     contains
+
+    subroutine Thermo_values(this, tau, a, cs2b, opacity, dopacity)
+    !Compute unperturbed sound speed squared,
+    !and ionization fraction by interpolating pre-computed tables.
+    !If requested also get time derivative of opacity
+    class(TThermoData) :: this
+    real(dl), intent(in) :: tau
+    real(dl), intent(out) :: a, cs2b, opacity(nscatter)
+    real(dl), intent(out), optional :: dopacity(nscatter)
+    integer i
+    real(dl) d
+
+    d=log(tau/this%tauminn)/this%dlntau+1._dl
+    i=int(d)
+    d=d-i
+    if (i < 1) then
+        !Linear interpolation if out of bounds (should not occur).
+        write(*,*) 'Thermo_values : tau, taumin = ', tau, this%tauminn
+        call MpiStop('thermo out of bounds')
+    else if (i >= this%nthermo) then
+        cs2b=this%cs2(this%nthermo)
+        opacity(1)=this%dotmu(this%nthermo,1)
+        a=1
+        if (present(dopacity)) then
+            dopacity(1) = this%ddotmu(this%nthermo,1)/(tau*this%dlntau)
+        end if
+    else
+        cs2b=this%cs2(i)+d*(this%dcs2(i)+d*(3*(this%cs2(i+1)-this%cs2(i))  &
+            -2*this%dcs2(i)-this%dcs2(i+1)+d*(this%dcs2(i)+this%dcs2(i+1)  &
+            +2*(this%cs2(i)-this%cs2(i+1)))))
+        opacity(1)=this%dotmu(i,1)+d*(this%ddotmu(i,1)+d*(3*(this%dotmu(i+1,1)-this%dotmu(i,1)) &
+            -2*this%ddotmu(i,1)-this%ddotmu(i+1,1)+d*(this%ddotmu(i,1)+this%ddotmu(i+1,1) &
+            +2*(this%dotmu(i,1)-this%dotmu(i+1,1)))))
+        a = (this%ScaleFactor(i)+d*(this%dScaleFactor(i)+d*(3*(this%ScaleFactor(i+1)-this%ScaleFactor(i)) &
+            -2*this%dScaleFactor(i)-this%dScaleFactor(i+1)+d*(this%dScaleFactor(i)+this%dScaleFactor(i+1) &
+            +2*(this%ScaleFactor(i)-this%ScaleFactor(i+1))))))*tau
+        if (present(dopacity)) then
+            dopacity(1)=(this%ddotmu(i,1)+d*(this%dddotmu(i,1)+d*(3*(this%ddotmu(i+1,1)  &
+                -this%ddotmu(i,1))-2*this%dddotmu(i,1)-this%dddotmu(i+1,1)+d*(this%dddotmu(i,1) &
+                +this%dddotmu(i+1,1)+2*(this%ddotmu(i,1)-this%ddotmu(i+1,1))))))/(tau*this%dlntau)
+        end if
+    end if
+    end subroutine Thermo_values
 
     function CAMBdata_PythonClass()
     character(LEN=:), allocatable :: CAMBdata_PythonClass
@@ -1254,6 +1282,7 @@
 
     CAMBdata_sound_horizon = Integrate_Romberg(this,dsound_da_exact,1d-9,1/(z+1),1e-6_dl)
 
+    !write(*,*) 'dr1 sound horizon :' ,ThermalNuBackground%dr1(1)
     end function CAMBdata_sound_horizon
 
     subroutine CAMBdata_sound_horizon_zArr(this,arr, z,n)
@@ -2005,6 +2034,8 @@
 
     end subroutine InterpolateClArrTemplated
 
+    
+
     subroutine Thermo_values_array(this,tau,a,cs2b,opacity, dopacity) ! BB24
         !Compute unperturbed sound speed squared,
         !and ionization fraction by interpolating pre-computed tables.
@@ -2017,14 +2048,14 @@
         real(dl), intent(out), optional :: dopacity(nscatter)
         integer i
         real(dl) d
-
-        write(*,*) 'thermo_values_array : tau, tauminn = ', tau, this%tauminn
+        
+        !write(*,*) 'thermo_values_array : tau, tauminn = ', tau, this%tauminn
         d=log(tau/this%tauminn)/this%dlntau+1._dl
         i=int(d)
         d=d-i
         if (i < 1) then
             !Linear interpolation if out of bounds (should not occur).
-            write(*,*) 'tau, taumin, i  = ', tau, this%tauminn, i
+            !write(*,*) 'tau, taumin, i, dlntau = ', tau, this%tauminn, i, this%dlntau
             call MpiStop('thermo out of bounds')
         else if (i >= this%nthermo) then
             cs2b=this%cs2(this%nthermo)
@@ -2125,6 +2156,8 @@
     real(dl) Thermo_OpacityToTime
     !Do this the bad slow way for now..
     !The answer is approximate
+    !write(*,*) 'opacity 1 :' , opacity
+    !write(*,*) 'dotmu 1 :' , this%dotmu(1,1)
     j =1
     do while(this%dotmu(j,1)> opacity)
         j=j+1
@@ -2181,10 +2214,9 @@
     real(dl) elec_fac
     ! andrea
     real(dl), parameter :: nu_eff = 3101692._dl !3125349._dl is approx from Yu paper
-    ! Allocate memory for Statee
-    !allocate(Statee)
-    ! andrea
+
     CP => State%CP
+
     if (num_cmb_freq<10) then
         phot_freqs(1:6) = [0, 143, 217,353, 545, 857]
 !       phot_freqs(1:8) = [220,265,300,320,295,460,555,660]*1.085 !Prism
@@ -2241,7 +2273,6 @@
     nthermo = nint(thermal_history_def_timesteps*log(1.4e4/taumin)/log(1.4e4/2e-4)*background_boost)
     ! and
     this%tauminn=0.95d0*taumin
-    write(*,*) 'tauminn thermo_init = ',this%tauminn
     this%dlntau=log(State%tau0/this%tauminn)/(nthermo-1)
 
     do RW_i = 1, State%num_redshiftwindows
@@ -2433,6 +2464,7 @@
         end if
         tau01 =tau
     end do
+    !write(*,*) 'tau FIRST INIT = ', tau
     do RW_i = 1, State%num_redshiftwindows
         associate(Win => RW(RW_i))
             if (State%Redshift_w(RW_i)%kind == window_lensing .or. &
@@ -2541,6 +2573,7 @@
         !
         !Tight coupling switch time when k/opacity is smaller than 1/(tau*opacity)
     end do
+    !write(*,*) 'tau SECOND INIT', taU
 
     if (CP%Reion%Reionization .and. (this%xe(nthermo) < 0.999d0)) then
         write(*,*)'Warning: xe at redshift zero is < 1'
@@ -2605,23 +2638,23 @@
         write(*,'("Reion opt depth      = ",f7.4)') this%actual_opt_depth
     end if
 
-    ! ! andrea
-    ! if (plot_scatter) then
-    !     call CreateTxtFile('c:\tmp\planck\rayleigh\fixed\visibilities_tot.txt',1)
-    !     do j1=1,nthermo !!!!
-    !         tau = tauminn*exp((j1-1)*dlntau)
-    !         write(1,'(9E15.5)') tau, scaleFactor(j1), this%dotmu(j1,1)*scaleFactor(j1)**2/State%akthom, real(this%emmu(j1,1)*this%dotmu(j1,1)),real(this%emmu(j1,3:7)*this%emmu(j1,1)*this%dotmu(j1,3:7))
-    !     end do
-    !     close(1)
-    !     call CreateTxtFile('c:\tmp\planck\rayleigh\fixed\taudot_tot.txt',1)
-    !     do j1=1,nthermo !!!!
-    !         tau = tauminn*exp((j1-1)*dlntau)
-    !         write(1,'(14E15.5)') tau, scaleFactor(j1), this%dotmu(j1,1)*scaleFactor(j1)**2/State%akthom, real(this%dotmu(j1,1)),real(this%dotmu(j1,3:7)),real(this%emmu(j1,3:7))
-    !     end do
-    !     close(1)
-    !     stop
-    ! end if
     ! andrea
+    !if (plot_scatter) then
+     !   call CreateTxtFile('c:\tmp\planck\rayleigh\fixed\visibilities_tot.txt',1)
+      !      do j1=1,nthermo !!!!
+               ! tau = this%tauminn*exp((j1-1)*dlntau)
+       !      write(1,'(9E15.5)') tau, scaleFactor(j1), this%dotmu(j1,1)*scaleFactor(j1)**2/State%akthom, real(this%emmu(j1,1)*this%dotmu(j1,1)),real(this%emmu(j1,3:7)*this%emmu(j1,1)*this%dotmu(j1,3:7))
+        ! end do
+         !close(1)
+         !call CreateTxtFile('c:\tmp\planck\rayleigh\fixed\taudot_tot.txt',1)
+         !do j1=1,nthermo !!!!
+         !    tau = this%tauminn*exp((j1-1)*dlntau)
+         !    write(1,'(14E15.5)') tau, scaleFactor(j1), this%dotmu(j1,1)*scaleFactor(j1)**2/State%akthom,                               real(this%dotmu(j1,1)),real(this%dotmu(j1,3:7)),real(this%emmu(j1,3:7))
+         !end do
+         !close(1)
+         !stop
+     !end if
+     !andrea
 
     iv=0
     vfi=0._dl
@@ -2658,6 +2691,7 @@
             end if
         end if
     end do
+    !write(*,*) 'tau 3 INIT', taU
 
     if (iv /= 2) then
         call GlobalError('ThemoData Init: failed to find end of recombination',error_reionization)
@@ -2684,7 +2718,7 @@
             this%winlens(j1)= awin_lens1p/(State%tau0-tau) - awin_lens2p
         end do
     end if
-
+    !write(*,*) 'tau DOWINLENS', taU
     ! Calculating the timesteps during recombination.
 
     if (CP%WantTensors) then
@@ -2745,9 +2779,6 @@
         !$OMP END PARALLEL DO
         call this%SetTimeStepWindows(State,State%TimeSteps)
     end if
-    ! and fix segmentation
-    call etat%Init(State,WantTSpin=CP%Do21cm)
-    ! and
     if (CP%WantDerivedParameters) then
         associate(ThermoDerivedParams => State%ThermoDerivedParams)
             !$OMP PARALLEL SECTIONS DEFAULT(SHARED)
@@ -2758,7 +2789,7 @@
             DA = State%AngularDiameterDistance(this%z_star)/(1/(this%z_star+1))
             ThermoDerivedParams( derived_zdrag ) = this%z_drag
             !$OMP SECTION
-            rs =State%sound_horizon(this%z_drag)
+            !write(*,*)'r1, dr1', thermalNuBackground%r1(1)+thermalNuBackground%dr1(1)
             ThermoDerivedParams( derived_rdrag ) = rs
             ! and
             ThermoDerivedParams( derived_kD ) =  &
@@ -2852,6 +2883,8 @@
     ! Deallocate memory for Statee
     ! deallocate(Statee)
 
+    !write(*,*) 'tau end INIT = ', tau
+    !write(*,*) 'thermo_init taumin, tau = ',this%tauminn, tau
     end subroutine Thermo_Init
 
     ! subroutine thermoarr(tau,cs2b,opacity, dopacity)
@@ -3313,7 +3346,7 @@
 
     end subroutine DoWindowSpline
 
-    subroutine IonizationFunctionsAtTime(this,tau, a, opacity, dopacity, ddopacity, &
+    subroutine IonizationFunctionsAtTime(this, tau, a, opacity, dopacity, ddopacity, &
         vis, dvis, ddvis, exptau, lenswin)
     class(TThermoData) :: this
     real(dl), intent(in) :: tau
@@ -3324,8 +3357,8 @@
     real(dl) d, cs2
     integer :: i, scat
 
-    call this%values_array(tau,a,cs2,opacity,dopacity)
-
+    call this%Values_array(tau,a,cs2,opacity,dopacity)
+    !write(*,*) ' IonizationFunctionsAtTime tau, tauminn = ', tau, this%tauminn
     d=log(tau/this%tauminn)/this%dlntau+1._dl
     i=int(d)
     d=d-i
@@ -3507,11 +3540,6 @@
     Type(CAMBParams), pointer :: CP
     integer lmin
 
-    ! andrea
-    integer nsource_out
-    integer f_i_1,f_i_2
-    ! andrea
-
     CP=> State%CP
     lmin= CP%Min_l
 
@@ -3531,10 +3559,8 @@
     end if
 
     if (CP%WantScalars .and. CP%want_cl_2D_array .and. ScalCovFile /= '' .and. this%CTransScal%NumSources>2) then
-        ! andrea
-        nsource_out = 3+State%num_redshiftwindows+num_cmb_freq*2
-        allocate(outarr(1:nsource_out,1:nsource_out))
-        ! andrea
+        allocate(outarr(1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows))
+
         do i=1, 3+State%num_redshiftwindows
             do j=1, 3+State%num_redshiftwindows
                 cov_names(j + (i-1)*(3+State%num_redshiftwindows)) = trim(scalar_fieldname(i))//'x'//trim(scalar_fieldname(j))
@@ -3543,26 +3569,16 @@
         unit = open_file_header(ScalCovFile, 'L', cov_names)
 
         do il=lmin,min(10000,CP%Max_l)
-            ! andrea
-            outarr=this%Cl_scalar_array(il,1:3*nsource_out,1:nsource_out)
-            ! andrea
+            outarr=this%Cl_scalar_array(il,1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows)
             outarr(1:2,:)=sqrt(fact)*outarr(1:2,:)
             outarr(:,1:2)=sqrt(fact)*outarr(:,1:2)
-            ! andrea
-            outarr(:,4:3+num_cmb_freq*2)=sqrt(fact)*outarr(:,4:3+num_cmb_freq*2)
-            outarr(4:3+num_cmb_freq*2,:)=sqrt(fact)*outarr(4:3+num_cmb_freq*2,:)
-            write(unit,trim(numcat('(1I6,',(nsource_out)**2))//'E15.6)') il, real(outarr)
-            ! andrea
+            write(unit,trim(numcat('(1I6,',(3+State%num_redshiftwindows)**2))//'E15.6)') il, real(outarr)
         end do
         do il=10100,CP%Max_l, 100
-            outarr=this%Cl_scalar_array(il,1:nsource_out,1:nsource_out)
+            outarr=this%Cl_scalar_array(il,1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows)
             outarr(1:2,:)=sqrt(fact)*outarr(1:2,:)
             outarr(:,1:2)=sqrt(fact)*outarr(:,1:2)
-            ! andrea
-            outarr(:,4:3+num_cmb_freq*2)=sqrt(fact)*outarr(:,4:3+num_cmb_freq*2)
-            outarr(4:3+num_cmb_freq*2,:)=sqrt(fact)*outarr(4:3+num_cmb_freq*2,:)
-            ! andrea
-            write(unit,trim(numcat('(1E15.5,',(nsource_out)**2))//'E15.6)') real(il), real(outarr)
+            write(unit,trim(numcat('(1E15.5,',(3+State%num_redshiftwindows)**2))//'E15.6)') real(il), real(outarr)
         end do
         close(unit)
         deallocate(outarr)
@@ -3574,24 +3590,6 @@
             write(unit,'(1I6,4E15.6)')il, fact*this%Cl_tensor(il, CT_Temp:CT_Cross)
         end do
         close(unit)
-        ! ! andrea
-        ! if (num_cmb_freq>0) then
-        !     open(unit=fileio_unit,file=trim(TensFile)//'_freqs',form='formatted',status='replace')
-        !     write(fileio_unit,'('//trim(IntToStr(num_cmb_freq))//'E15.5)') phot_freqs
-        !     close(fileio_unit)
-        !     do f_i_1=1,num_cmb_freq
-        !         do f_i_2=1,num_cmb_freq
-        !             open(unit=fileio_unit,file=trim(TensFile)//trim(concat('_',f_i_1,'_',f_i_2)),form='formatted',status='replace')
-        !             do in=1,CP%InitPower%nn
-        !                 do il=lmin, CP%Max_l_tensor
-        !                     write(fileio_unit,'(1I6,4E15.5)')il, fact*Cl_tensor_freqs(il, in, CT_Temp:CT_Cross,f_i_1,f_i_2)
-        !                 end do
-        !             end do
-        !             close(fileio_unit)
-        !         end do
-        !     end do
-        ! end if
-        ! ! andrea
     end if
 
     if (CP%WantTensors .and. CP%WantScalars .and. TotFile /= '') then
@@ -3612,25 +3610,8 @@
             write(unit,'(1I6,4E15.6)')il, fact*this%Cl_lensed(il, CT_Temp:CT_Cross)
         end do
         close(unit)
-        ! ! andrea
-        ! if (num_cmb_freq>0) then
-        !     open(unit=fileio_unit,file=trim(LensFile)//'_freqs',form='formatted',status='replace')
-        !     write(fileio_unit,'('//trim(IntToStr(num_cmb_freq))//'E15.5)') phot_freqs
-        !     close(fileio_unit)
-        !     do f_i_1=1,num_cmb_freq
-        !         do f_i_2=1,num_cmb_freq
-        !             open(unit=fileio_unit,file=trim(LensFile)//trim(concat('_',f_i_1,'_',f_i_2)),form='formatted',status='replace')
-        !             do in=1,CP%InitPower%nn
-        !                 do il=lmin, lmax_lensed
-        !                     write(unit,'(1I6,4E15.6)')il, fact*this%Cl_lensed_freqs(il, in, CT_Temp:CT_Cross,f_i_1,f_i_2)
-        !                 end do
-        !             end do
-        !             close(fileio_unit)
-        !         end do
-        !     end do
-        ! end if
-        ! ! andrea
     end if
+
 
     if (CP%WantScalars .and. CP%WantTensors .and. CP%DoLensing .and. LensTotFile /= '') then
         unit = open_file_header(LensTotFile, 'L', CT_name_tags)
@@ -3731,55 +3712,6 @@
     end if
 
     end subroutine TCLdata_NormalizeClsAtL
-
-
-    subroutine Thermo_values(this, tau, a, cs2b, opacity, dopacity)
-        !Compute unperturbed sound speed squared,
-        !and ionization fraction by interpolating pre-computed tables.
-        !If requested also get time derivative of opacity
-        class(TThermoData) :: this
-        real(dl), intent(in) :: tau
-        real(dl), intent(out) :: a, cs2b
-        real(dl), intent(out) :: opacity(nscatter)
-        real(dl), intent(out), optional :: dopacity(nscatter)
-        integer i
-        real(dl) d
-    
-        d=log(tau/this%tauminn)/this%dlntau+1._dl
-        i=int(d)
-        d=d-i
-        if (i < 1) then
-            !Linear interpolation if out of bounds (should not occur).
-            write(*,*) 'tau, taumin = ', tau, this%tauminn
-            call MpiStop('thermo out of bounds')
-        else if (i >= this%nthermo) then
-            cs2b=this%cs2(this%nthermo)
-            ! and guess
-            opacity(1)=this%dotmu(this%nthermo,1)
-            a=1
-            if (present(dopacity)) then
-                dopacity(1) = this%ddotmu(this%nthermo,1)/(tau*this%dlntau)
-            end if
-            ! and
-        ! andrea
-        else
-            cs2b=this%cs2(i)+d*(this%dcs2(i)+d*(3*(this%cs2(i+1)-this%cs2(i))  &
-                -2*this%dcs2(i)-this%dcs2(i+1)+d*(this%dcs2(i)+this%dcs2(i+1)  &
-                +2*(this%cs2(i)-this%cs2(i+1)))))
-            opacity(1)=this%dotmu(i,1)+d*(this%ddotmu(i,1)+d*(3*(this%dotmu(i+1,1)-this%dotmu(i,1)) &
-                -2*this%ddotmu(i,1)-this%ddotmu(i+1,1)+d*(this%ddotmu(i,1)+this%ddotmu(i+1,1) &
-                +2*(this%dotmu(i,1)-this%dotmu(i+1,1)))))
-            a = (this%ScaleFactor(i)+d*(this%dScaleFactor(i)+d*(3*(this%ScaleFactor(i+1)-this%ScaleFactor(i)) &
-                -2*this%dScaleFactor(i)-this%dScaleFactor(i+1)+d*(this%dScaleFactor(i)+this%dScaleFactor(i+1) &
-                +2*(this%ScaleFactor(i)-this%ScaleFactor(i+1))))))*tau
-            if (present(dopacity)) then
-                dopacity(1)=(this%ddotmu(i,1)+d*(this%dddotmu(i,1)+d*(3*(this%ddotmu(i+1,1)  &
-                    -this%ddotmu(i,1))-2*this%dddotmu(i,1)-this%dddotmu(i+1,1)+d*(this%dddotmu(i,1) &
-                    +this%dddotmu(i+1,1)+2*(this%ddotmu(i,1)-this%ddotmu(i+1,1))))))/(tau*this%dlntau)
-        ! 
-            end if
-        end if
-    end subroutine Thermo_values
 
     subroutine TRecfast_ReadParams(this, Ini)
     use IniObjects

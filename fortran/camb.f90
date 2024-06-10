@@ -17,6 +17,7 @@
     use CAMBmain
     use lensing
     type (CAMBdata) :: CData
+    !class(TThermoData) :: this
     logical :: want_tensors, want_vectors
 
     call SetActiveState(CData)
@@ -75,6 +76,7 @@
         P%WantScalars = .false.
         P%WantVectors = .false.
         call OutData%SetParams(P, call_again=call_again)
+        !write(*,*) 'dr1 1 :' ,ThermalNuBackground%dr1
         if (global_error_flag==0) call cmbmain(this,etat)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
@@ -90,6 +92,7 @@
         P%WantScalars = .false.
         P%WantTensors = .false.
         call OutData%SetParams(P, call_again=call_again)
+        !write(*,*) 'dr1 2 :' ,ThermalNuBackground%dr1
         if (global_error_flag==0) call cmbmain(this,etat)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
@@ -108,6 +111,7 @@
             P%WantTransfer  = .true.
         end if
         call OutData%SetParams(P)
+        !write(*,*) 'dr1 3 :' ,ThermalNuBackground%dr1(1)
         if (global_error_flag==0) call cmbmain(this,etat)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
@@ -124,6 +128,7 @@
         P%WantTensors = .false.
         P%WantVectors = .false.
         call OutData%SetParams(P, call_again=call_again)
+        !write(*,*) 'dr1 4 :' ,ThermalNuBackground%dr1
         if (global_error_flag==0) call cmbmain(this,etat)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag

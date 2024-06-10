@@ -122,7 +122,6 @@
 
     contains
 
-
     subroutine cmbmain(this,etat)
     integer q_ix
     type(EvolutionVars) EV
@@ -149,8 +148,9 @@
 
     if (DebugMsgs .and. Feedbacklevel > 0) call Timer%Start(starttime)
 
-    call InitVars(State,etat) !Most of single thread time spent here (in InitRECFAST)
+    call InitVars(this, State, etat) !Most of single thread time spent here (in InitRECFAST)
     if (global_error_flag/=0) return
+    !write(*,*) 'cmbmain : cs2, nthermo = ', this%cs2, this%nthermo
 
     if (DebugMsgs .and. Feedbacklevel > 0) then
         call Timer%WriteTime('Timing for InitVars')
@@ -533,6 +533,7 @@
 
     subroutine SourceToTransfers(ThisCT, q_ix)
     type(ClTransferData), target :: ThisCT 
+    !class(TThermoData) :: this
     integer q_ix
     type(IntegrationVars) :: IV
 
@@ -704,12 +705,14 @@
     !     Begin when wave is far outside horizon.
     !     Conformal time (in Mpc) in the radiation era, for photons plus 3 species
     !     of relativistic neutrinos.
+
+    !write(*,*) 'Q GETTAUSTART = ', q
     if (State%flat) then
         taustart=0.001_dl/q
     else
         taustart=0.001_dl/sqrt(q**2-State%curv)
     end if
-
+    !write(*,*) 'taustart GETTAUSTART flat or curve = ', taustart
     !     Make sure to start early in the radiation era.
     taustart=min(taustart,0.1_dl)
 
@@ -717,7 +720,7 @@
     if (CP%Num_nu_massive>0 .and. any(State%nu_masses(1:CP%Nu_mass_eigenstates)/=0)) then
         taustart=min(taustart,1.d-3/maxval(State%nu_masses(1:CP%Nu_mass_eigenstates))/State%adotrad)
     end if
-
+    !write(*,*) 'taustart GETTAUSTART if mu_massive= ', taustart
     GetTauStart=taustart
     end function GetTauStart
 
@@ -727,6 +730,7 @@
     type(EvolutionVars) EV
     class(TThermoData) :: this
     class(TRecfast) :: etat
+    !write(*,*) 'DoSourcek : cs2, nthermo = ', this%cs2, this%nthermo
 
     EV%q=ThisSources%Evolve_q%points(q_ix)
 
@@ -734,16 +738,16 @@
 
     EV%q_ix = q_ix
     EV%TransferOnly=.false.
-
+    ! and
     EV%ThermoData => State%ThermoData
-
+    ! and
     taustart = GetTauStart(EV%q)
 
     call GetNumEqns(EV)
-
+    !write(*,*) 'DoSourcek : taustart = ', taustart
     if (CP%WantScalars .and. global_error_flag==0) call CalcScalarSources(EV,this,etat,taustart)
     if (CP%WantVectors .and. global_error_flag==0) call CalcVectorSources(EV,this,etat,taustart)
-    if (CP%WantTensors .and. global_error_flag==0) call CalcTensorSources(EV,etat,taustart)
+    if (CP%WantTensors .and. global_error_flag==0) call CalcTensorSources(EV,this, etat,taustart)
 
     end subroutine DoSourcek
 
@@ -784,12 +788,14 @@
 
 
     !  initial variables, number of steps, etc.
-    subroutine InitVars(state,etat)
+    subroutine InitVars(this,state,etat)
+    class(TTHermodata) :: this
     type(CAMBdata) :: state
     class(TRecfast) :: etat
     real(dl) taumin, maxq, initAccuracyBoost
     integer itf
 
+    !write(*,*) 'dr1 initvars :' ,ThermalNuBackground%dr1(1)
     call SetActiveState(state)
 
     initAccuracyBoost = CP%Accuracy%AccuracyBoost * CP%Accuracy%TimeStepBoost
@@ -829,23 +835,24 @@
         maxq = max(maxq, CP%Transfer%kmax*exp(1._dl/CP%Transfer%k_per_logint))
     end if
 
+    ! and
     taumin=GetTauStart(maxq)
-    !write(*,*) 'taumin Initvars = ', taumin
+    !write(*,*) 'tauminn InitVars : ', taumin
+    ! and
     !     Initialize baryon temperature and ionization fractions vs. time.
     !     This subroutine also fixes the timesteps where the sources are
     !     saved in order to do the integration. So TimeSteps is set here.
     !These routines in ThermoData (modules.f90)
     ! and fix
     call etat%Init(State,WantTSpin=CP%Do21cm)
+    call this%Init(etat, State, taumin)
     ! and
-    call State%ThermoData%Init(etat,state,taumin)
     if (global_error_flag/=0) return
 
     if (DebugMsgs .and. Feedbacklevel > 0) write (*,*) 'ThermoData.Init'
 
     !Do any array initialization for propagation equations
     call GaugeInterface_Init
-
     if (Feedbacklevel > 0)  &
         write(*,'("tau_recomb/Mpc       = ",f7.2,"  tau_now/Mpc = ",f8.1)') State%tau_maxvis,State%tau0
 
@@ -865,7 +872,6 @@
         if (CP%WantTransfer) &
             call State%TimeOfzArr(State%Transfer_times(1:),  State%Transfer_redshifts, State%num_transfer_redshifts)
     endif
-
     end subroutine InitVars
 
     subroutine SetkValuesForSources
@@ -1005,7 +1011,7 @@
 
     w=0
     y=0
-    call initial(EV,y, taustart)
+    call initial(EV, this, y, taustart)
     if (global_error_flag/=0) return
 
     tau=taustart
@@ -1018,13 +1024,14 @@
         if  (CP%Transfer%high_precision) tol1=tol1/100
         do while (itf <= State%num_transfer_redshifts .and. State%TimeSteps%points(2) > State%Transfer_Times(itf))
             !Just in case someone wants to get the transfer outputs well before recombination
+            !write(*,*) 'CalcScalarSource 1 tau, tauminn = ', tau, this%tauminn
             call GaugeInterface_EvolveScal(EV,this,etat,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
             if (global_error_flag/=0) return
             call outtransf(EV, this, etat, y, tau, State%MT%TransferData(:,EV%q_ix,itf))
             itf = itf+1
         end do
     end if
-
+    !write(*,*) 'cambmain : tau, start ici :  = ', tau
     do j=2,State%TimeSteps%npoints
         tauend=State%TimeSteps%points(j)
 
@@ -1033,18 +1040,19 @@
             ThisSources%LinearSrc(EV%q_ix,:,j)=0
         else
             !Integrate over time, calulate end point derivs and calc output
-            write(*,*) 'cambmain : tau, j ici :  = ', tau,j
+            !write(*,*) 'CalcScalarSource 2 tau, tauminn = ', tau, this%tauminn
             call GaugeInterface_EvolveScal(EV,this, etat, tau,y,tauend,tol1,ind,c,w)
             if (global_error_flag/=0) return
 
             call output(EV,this,etat,y,j, tau,sources, CP%CustomSources%num_custom_sources)
             ThisSources%LinearSrc(EV%q_ix,:,j)=sources
-            write(*,*) 'cambmain : tau, j ici2 :  = ', tau,j
+            !write(*,*) 'cambmain : tau, j ici2 :  = ', tau,j
 
             !     Calculation of transfer functions.
 101         if (CP%WantTransfer.and.itf <= State%num_transfer_redshifts) then
                 if (j < State%TimeSteps%npoints) then
                     if (tauend < State%Transfer_Times(itf) .and. State%TimeSteps%points(j+1)  > State%Transfer_Times(itf)) then
+                        !write(*,*) 'CalcScalarSource 3 tau, tauminn = ', tau, this%tauminn
                         call GaugeInterface_EvolveScal(EV,this,etat,tau,y,State%Transfer_Times(itf),tol1,ind,c,w)
                         if (global_error_flag/=0) return
                     endif
@@ -1070,17 +1078,18 @@
     end subroutine CalcScalarSources
 
 
-    subroutine CalcTensorSources(EV,this,taustart)
+    subroutine CalcTensorSources(EV, this, etat, taustart)
     implicit none
     type(EvolutionVars) EV
-    class(TRecfast) :: this
+    class(TThermoData) :: this
+    class(TRecfast) :: etat
     real(dl) tau,tol1,tauend, taustart
     integer j,ind
     real(dl) c(24),wt(EV%nvart,9), yt(EV%nvart)
     real(dl) outT(nscatter),outE(nscatter),outB(nscatter)
     integer f_i
 
-    call initialt(EV,yt, taustart)
+    call initialt(EV, this, yt, taustart)
 
     tau=taustart
     ind=1
@@ -1094,7 +1103,7 @@
         else
             !call outputt(EV,this,yt,EV%nvart,tau,ThisSources%LinearSrc(EV%q_ix,CT_Temp,j),&
              !   ThisSources%LinearSrc(EV%q_ix,CT_E,j),ThisSources%LinearSrc(EV%q_ix,CT_B,j))
-            call outputt(EV,this,yt,EV%nvart,tau,outT,outE,outB)
+            call outputt(EV, this, etat, yt,EV%nvart,tau,outT,outE,outB)
             ! and
             do f_i=1,nscatter
                 ThisSources%LinearSrc(EV%q_ix,1+(f_i-1)*3:3+(f_i-1)*3,j) = [outT(f_i),outE(f_i),outB(f_i)]
@@ -1129,7 +1138,7 @@
         if ( EV%q*tauend > max_etak_vector) then
             ThisSources%LinearSrc(EV%q_ix,:,j) = 0
         else
-            call dverk(EV,EV%nvarv,derivsv,tau,yv,tauend,tol1,ind,c,EV%nvarv,wt) !tauend
+            call dverk_derivsv(EV, this, etat, EV%nvarv,tau,yv,tauend,tol1,ind,c,EV%nvarv,wt) !tauend
 
             call outputv(EV,this,etat,yv,EV%nvarv,tau,ThisSources%LinearSrc(EV%q_ix,CT_Temp,j),&
                 ThisSources%LinearSrc(EV%q_ix,CT_E,j),ThisSources%LinearSrc(EV%q_ix,CT_B,j))
@@ -1161,7 +1170,9 @@
 
         EV%q2=EV%q**2
         EV%q_ix = q_ix
+        ! and
         EV%ThermoData => State%ThermoData
+        ! and
 
         tau = GetTauStart(EV%q)
 
@@ -1186,7 +1197,7 @@
     if (CP%Transfer%high_precision) atol=atol/10000 !CHECKTHIS
 
     ind=1
-    call initial(EV,y, tau)
+    call initial(EV, this, y, tau)
     if (global_error_flag/=0) return
 
     do i=1,State%num_transfer_redshifts
@@ -1440,7 +1451,8 @@
 
     subroutine DoSourceIntegration(IV, ThisCT) !for particular wave number q
     type(IntegrationVars) IV
-    Type(ClTransferData) :: ThisCT    
+    Type(ClTransferData) :: ThisCT
+    !class(TThermoData) :: this
     integer j,ll,llmax
     real(dl) nu
     real(dl) :: sixpibynu
@@ -1500,6 +1512,7 @@
     implicit none
     type(IntegrationVars) IV
     Type(ClTransferData) :: ThisCT 
+    !class(TThermoData) :: this
     integer llmax
     integer j
     logical DoInt

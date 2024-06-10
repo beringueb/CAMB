@@ -220,7 +220,7 @@
     real(dl), intent(out) :: rhonu
     real(dl) d, am2
     integer i
-
+    !write(*,*) 'r1 thermalNuBackground:' ,this%r1(1)
     !  Compute massive neutrino density in units of the mean
     !  density of one eigenstate of massless neutrinos.  Use series solutions or
     !  cubic splines to interpolate from a table.
@@ -241,7 +241,10 @@
     d=(am-am_min)/this%dam+1._dl
     i=int(d)
     d=d-i
-
+    
+    !if (i > 1300) then
+        !write(*,*) 'i =',i
+    !end if
     !  Cubic spline interpolation.
     rhonu=this%r1(i)+d*(this%dr1(i)+d*(3._dl*(this%r1(i+1)-this%r1(i))-2._dl*this%dr1(i) &
         -this%dr1(i+1)+d*(this%dr1(i)+this%dr1(i+1)+2._dl*(this%r1(i)-this%r1(i+1)))))

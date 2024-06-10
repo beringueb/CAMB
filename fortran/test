@@ -1,0 +1,13 @@
+interface
+        subroutine dverk3(EV, this, etat, n, fcn, x, y, xend, tol, ind, c, nw, w)
+        use Precision
+        use MpiUtils
+        use Config, only : GlobalError, error_evolution
+        !use Recombination
+        class(EvolutionVars) :: EV
+        class(TThermoData) :: this
+        class(TRecfast) :: etat
+        integer n, ind, nw, k
+        real(dl) x, y(n), xend, tol, c(*), w(nw,9), temp
+        end subroutine dverk3
+    end interface
