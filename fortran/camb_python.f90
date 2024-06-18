@@ -244,16 +244,17 @@
 
     end subroutine F2003Class_free
 
-    function CAMBdata_GetTransfers(State, Params, this, etat, onlytransfer, onlytimesources) result(error)
+    function CAMBdata_GetTransfers(State, Params, CLData, this, etat, onlytransfer, onlytimesources) result(error)
     Type (CAMBdata):: State
     type(CAMBparams) :: Params
+    class(TCLData) :: CLData
     class(TThermoData) :: this
     class(TRecfast) :: etat
     logical :: onlytransfer, onlytimesources
     integer :: error
 
     error = 0
-    call CAMB_GetResults(State, Params, this, etat, error, onlytransfer, onlytimesources)
+    call CAMB_GetResults(State, Params, CLData, this, etat, error, onlytransfer, onlytimesources)
 
     end function CAMBdata_GetTransfers
 
@@ -337,17 +338,18 @@
 
     end subroutine CAMBdata_MatterTransferData
 
-    subroutine CAMBdata_ClTransferData(State, cData, i)
+    subroutine CAMBdata_ClTransferData(State, cData, CLData,i)
     Type(CAMBdata), target :: State
     Type(c_ClTransferData) :: cData
+    class(TCLData) :: CLData
     integer, intent(in) :: i
 
     if (i==0) then
-        call Convert_ClTransferData(State%CLdata%CTransScal, cData)
+        call Convert_ClTransferData(CLdata%CTransScal, cData)
     else if (i==1) then
-        call Convert_ClTransferData(State%CLdata%CTransVec, cData)
+        call Convert_ClTransferData(CLdata%CTransVec, cData)
     else if (i==2) then
-        call Convert_ClTransferData(State%CLdata%CTransTens, cData)
+        call Convert_ClTransferData(CLdata%CTransTens, cData)
     else
         error stop 'Unknown ClTransferData index'
     end if
@@ -412,8 +414,9 @@
 
     end subroutine CAMBdata_GetMatterPower
 
-    subroutine CAMB_SetTotCls(State,lmax, tot_scalar_Cls)
+    subroutine CAMB_SetTotCls(State, CLData, lmax, tot_scalar_Cls)
     type(CAMBdata) State
+    class(TCLData) :: CLData
     integer, intent(IN) :: lmax
     real(dl), intent(OUT) :: tot_scalar_cls(4, 0:lmax)
     integer l
@@ -422,23 +425,24 @@
     do l=State%CP%Min_l, lmax
         if (State%CP%WantScalars .and. l<= State%CP%Max_l) then
             if (State%CP%DoLensing) then
-                if (l<=State%CLData%lmax_lensed) &
-                    tot_scalar_cls(1:4,l) = State%CLData%Cl_lensed(l, CT_Temp:CT_Cross)
+                if (l<=CLData%lmax_lensed) &
+                    tot_scalar_cls(1:4,l) = CLData%Cl_lensed(l, CT_Temp:CT_Cross)
             else
-                tot_scalar_cls(1:2,l) = State%CLData%Cl_scalar(l,C_Temp:C_E)
-                tot_scalar_cls(4,l) = State%CLData%Cl_scalar(l, C_Cross)
+                tot_scalar_cls(1:2,l) = CLData%Cl_scalar(l,C_Temp:C_E)
+                tot_scalar_cls(4,l) = CLData%Cl_scalar(l, C_Cross)
             endif
         end if
         if (State%CP%WantTensors .and. l <= State%CP%Max_l_tensor) then
             tot_scalar_cls(1:4,l) = tot_scalar_cls(1:4,l) &
-                + State%CLData%Cl_tensor(l, CT_Temp:CT_Cross)
+                + CLData%Cl_tensor(l, CT_Temp:CT_Cross)
         end if
     end do
 
     end subroutine CAMB_SetTotCls
 
-    subroutine CAMB_SetUnlensedCls(State,lmax, unlensed_cls)
+    subroutine CAMB_SetUnlensedCls(State, CLData, lmax, unlensed_cls)
     Type(CAMBdata) :: State
+    class(TCLData) :: CLData
     integer, intent(IN) :: lmax
     real(dl), intent(OUT) :: unlensed_cls(4,0:lmax)
     integer l
@@ -446,21 +450,22 @@
     unlensed_cls = 0
     do l=State%CP%Min_l, lmax
         if (State%CP%WantScalars .and. l<= State%CP%Max_l) then
-            unlensed_cls(1:2,l) = State%CLData%Cl_scalar(l, C_Temp:C_E)
-            unlensed_cls(4,l) = State%CLData%Cl_scalar(l, C_Cross)
+            unlensed_cls(1:2,l) = CLData%Cl_scalar(l, C_Temp:C_E)
+            unlensed_cls(4,l) = CLData%Cl_scalar(l, C_Cross)
         end if
         if (State%CP%WantTensors &
             .and. l <= State%CP%Max_l_tensor) then
             unlensed_cls(1:4,l) = unlensed_cls(1:4,l) &
-                + State%CLData%Cl_tensor(l, CT_Temp:CT_Cross)
+                + CLData%Cl_tensor(l, CT_Temp:CT_Cross)
         end if
     end do
 
     end subroutine CAMB_SetUnlensedCls
 
-    subroutine CAMB_SetLensPotentialCls(State,lmax, cls)
+    subroutine CAMB_SetLensPotentialCls(State, CLData, lmax, cls)
     use constants
     Type(CAMBdata) :: State
+    class(TCLData) :: CLData
     integer, intent(IN) :: lmax
     real(dl), intent(OUT) :: cls(3, 0:lmax) !phi-phi, phi-T, phi-E
     integer l
@@ -468,16 +473,17 @@
     cls = 0
     if (State%CP%WantScalars .and. State%CP%DoLensing) then
         do l=State%CP%Min_l, min(lmax,State%CP%Max_l)
-            cls(1,l) = State%CLData%Cl_scalar(l,C_Phi) * (real(l+1)/l)**2/const_twopi
-            cls(2:3,l) = State%CLData%Cl_scalar(l,C_PhiTemp:C_PhiE) &
+            cls(1,l) = CLData%Cl_scalar(l,C_Phi) * (real(l+1)/l)**2/const_twopi
+            cls(2:3,l) = CLData%Cl_scalar(l,C_PhiTemp:C_PhiE) &
                 * ((real(l+1)/l)**1.5/const_twopi)
         end do
     end if
 
     end subroutine CAMB_SetLensPotentialCls
 
-    subroutine CAMB_SetUnlensedScalCls(State,lmax, scalar_Cls)
+    subroutine CAMB_SetUnlensedScalCls(State, CLData, lmax, scalar_Cls)
     Type(CAMBdata) :: State
+    class(TCLData) :: CLData
     integer, intent(IN) :: lmax
     real(dl), intent(OUT) :: scalar_Cls(4, 0:lmax)
     integer lmx
@@ -486,29 +492,31 @@
     if (State%CP%WantScalars) then
         lmx = min(State%CP%Max_l, lmax)
         scalar_Cls(1:2,State%CP%Min_l:lmx) = &
-            transpose(State%CLData%Cl_Scalar(State%CP%Min_l:lmx, C_Temp:C_E))
-        scalar_Cls(4,State%CP%Min_l:lmx) = State%CLData%Cl_Scalar(State%CP%Min_l:lmx, C_Cross)
+            transpose(CLData%Cl_Scalar(State%CP%Min_l:lmx, C_Temp:C_E))
+        scalar_Cls(4,State%CP%Min_l:lmx) = CLData%Cl_Scalar(State%CP%Min_l:lmx, C_Cross)
     end if
 
     end subroutine CAMB_SetUnlensedScalCls
 
-    subroutine CAMB_SetlensedScalCls(State,lmax, lensed_Cls)
+    subroutine CAMB_SetlensedScalCls(State, CLData, lmax, lensed_Cls)
     type(CAMBdata) State
+    class(TCLData) :: CLData
     integer, intent(IN) :: lmax
     real(dl), intent(OUT) :: lensed_Cls(4, 0:lmax)
     integer lmx
 
     lensed_Cls = 0
     if (State%CP%WantScalars .and. State%CP%DoLensing) then
-        lmx = min(lmax,State%CLData%lmax_lensed)
+        lmx = min(lmax,CLData%lmax_lensed)
         lensed_Cls(1:4,State%CP%Min_l:lmx) = &
-            transpose(State%CLData%Cl_lensed(State%CP%Min_l:lmx, CT_Temp:CT_Cross))
+            transpose(CLData%Cl_lensed(State%CP%Min_l:lmx, CT_Temp:CT_Cross))
     end if
 
     end subroutine CAMB_SetlensedScalCls
 
-    subroutine CAMB_SetTensorCls(State,lmax, tensor_Cls)
+    subroutine CAMB_SetTensorCls(State, CLData, lmax, tensor_Cls)
     Type(CAMBdata) :: State
+    class(TCLData) :: CLData
     integer, intent(IN) :: lmax
     real(dl), intent(OUT) :: tensor_Cls(4, 0:lmax)
     integer lmx
@@ -517,14 +525,15 @@
     if (State%CP%WantTensors) then
         lmx = min(lmax,State%CP%Max_l_tensor)
         tensor_Cls(1:4,State%CP%Min_l:lmx) = &
-            transpose(State%CLData%Cl_Tensor(State%CP%Min_l:lmx, CT_Temp:CT_Cross))
+            transpose(CLData%Cl_Tensor(State%CP%Min_l:lmx, CT_Temp:CT_Cross))
     end if
 
     end subroutine CAMB_SetTensorCls
 
 
-    subroutine CAMB_SetUnlensedScalarArray(State,lmax, ScalarArray, n)
+    subroutine CAMB_SetUnlensedScalarArray(State, CLData, lmax, ScalarArray, n)
     Type(CAMBdata) :: State
+    class(TCLData) :: CLData
     integer, intent(IN) :: lmax, n
     real(dl), intent(OUT) :: ScalarArray(n, n, 0:lmax)
     integer l
@@ -532,7 +541,7 @@
     ScalarArray = 0
     if (State%CP%WantScalars) then
         do l=State%CP%Min_l, min(lmax,State%CP%Max_l)
-            ScalarArray(1:n,1:n,l) = State%CLData%Cl_scalar_array(l, 1:n,1:n)
+            ScalarArray(1:n,1:n,l) = CLData%Cl_scalar_array(l, 1:n,1:n)
         end do
     end if
 

@@ -625,10 +625,10 @@
         end if
         ! andrea
         if (EV%Rayleigh) then
-               EV%g_ix_freq=neq+1
-               EV%polind_freq = neq+ (EV%lmaxg+1) -1
-               EV%freq_neq=(EV%lmaxg+1+EV%lmaxgpol-1)
-               neq=neq+EV%freq_neq*num_cmb_freq
+            EV%g_ix_freq=neq+1
+            EV%polind_freq = neq+ (EV%lmaxg+1) -1
+            EV%freq_neq=(EV%lmaxg+1+EV%lmaxgpol-1)
+            neq=neq+EV%freq_neq*num_cmb_freq
         end if
         ! andrea
     end if
@@ -763,16 +763,16 @@
         if (EV%Rayleigh .and. EVout%Rayleigh) then
              do i=1,num_cmb_freq
                  !assume number of frequencies is fixed
-             ix_off2 = EVOut%g_ix_freq + (i-1)*EVOut%freq_neq
-             ix_off = EV%g_ix_freq + (i-1)*EV%freq_neq
-             lmax = min(EV%lmaxg,EVout%lmaxg)
-             yout(ix_off2:ix_off2+lmax)=y(ix_off:ix_off+lmax)
-             lmax = min(EV%lmaxgpol,EVout%lmaxgpol)
-             ix_off2 = EVOut%polind_freq + (i-1)*EVOut%freq_neq
-             ix_off = EV%polind_freq + (i-1)*EV%freq_neq
-             yout(ix_off2+2:ix_off2+lmax)=y(ix_off+2:ix_off+lmax)
+                 ix_off2 = EVOut%g_ix_freq + (i-1)*EVOut%freq_neq
+                 ix_off = EV%g_ix_freq + (i-1)*EV%freq_neq
+                 lmax = min(EV%lmaxg,EVout%lmaxg)
+                 yout(ix_off2:ix_off2+lmax)=y(ix_off:ix_off+lmax)
+                 lmax = min(EV%lmaxgpol,EVout%lmaxgpol)
+                 ix_off2 = EVOut%polind_freq + (i-1)*EVOut%freq_neq
+                 ix_off = EV%polind_freq + (i-1)*EV%freq_neq
+                 yout(ix_off2+2:ix_off2+lmax)=y(ix_off+2:ix_off+lmax)
              end do
-            end if
+        end if
         ! andrea
     end if
 
@@ -1748,11 +1748,12 @@
     end do
     end subroutine output_window_sources
     ! andrea
-    subroutine output(EV, this, etat, yin, j, tau,sources, num_custom_sources)
+    subroutine output(EV, this, etat, CLdata, yin, j, tau,sources, num_custom_sources)
     ! andrea
     Type(EvolutionVars) EV
     class(TThermoData) :: this
     class(TRecfast) :: etat
+    class(TCLData) :: CLData
     ! andrea
     real(dl) yin(EV%nvar),yprimein(EV%nvar)
     ! andrea
@@ -1768,10 +1769,11 @@
     EV%OutputSources => Sources
     EV%OutputStep = j
     if (num_custom_sources>0) &
-        EV%CustomSources => sources(State%CLdata%CTransScal%NumSources - num_custom_sources+1:)
+        EV%CustomSources => sources(CLdata%CTransScal%NumSources - num_custom_sources+1:)
     call derivs(EV, this, etat, EV%ScalEqsToPropagate,tau,y,yprimein)
     yprime(1:EV%nvar) = yprimein(1:EV%nvar)
     ! andrea
+    !write(*,*) 'Equations Sources', Sources
     nullify(EV%OutputSources, EV%CustomSources)
 
     end subroutine output
@@ -2396,9 +2398,6 @@
     real(dl) dgpi,dgrho_matter,grho_matter, clxnu, gpres_nu
     !non-flat vars
     real(dl) cothxor !1/tau in flat case
-    ! andrea
-    real(dl) polter_freq, opac_rayleigh, opac_tot
-    ! andrea
     real(dl) xe,Trad, Delta_TM, Tmat, Delta_TCMB
     real(dl) delta_p_b, wing_t, wing2_t,winv_t
     real(dl) Delta_source2, polter_line
@@ -2420,8 +2419,10 @@
     ! andrea
     integer f_i, ix_off, s_ix
     real(dl) drhophot,qgphot,piphot,opac_qgphot, opac_phot, octgprime
+    real(dl) polter_freq, opac_rayleigh, opac_tot
     ! andrea
 
+    !write(*,*) 'is rayleigh :', EV%Rayleigh
     k=EV%k_buf
     k2=EV%k2_buf
     
@@ -2523,18 +2524,16 @@
     !  8*pi*a*a*SUM[(rho_i+p_i)*v_i]
     dgq=dgq + grhog_t*qg+grhor_t*qr
 
-    ! andrea
     if (.not. EV%TightCoupling .and. .not.EV%no_phot_multpoles )  then
-        call Phot_Integrate_L012(EV,ay,drhophot,qgphot,piphot, opacity, opac_qgphot,opac_phot)
-        if (rayleigh_back) then
+            call Phot_Integrate_L012(EV,ay,drhophot,qgphot,piphot, opacity, opac_qgphot,opac_phot)
+            if (rayleigh_back) then
             dgrho=dgrho + grhog_t*drhophot
             dgq=dgq + grhog_t*qgphot
-        else
+            else
             opac_qgphot = 0
             opac_phot = opacity(1)
+            end if
         end if
-    end if
-    ! andrea
 
     !  Photon mass density over baryon mass density
     photbar=grhog_t/grhob_t
@@ -2586,9 +2585,7 @@
         else
             Delta_TM = clxg/4
         end if
-        ! and freestyle
         delta_p_b = barssc0*(1._dl-0.75d0*State%CP%yhe+(1._dl-State%CP%yhe)*opacity(1)*a2/State%akthom)*Tmat*(clxb + delta_tm)
-        ! and
     else
         Delta_TM = clxg/4
         delta_p_b = cs2*clxb
@@ -2613,10 +2610,8 @@
         !  ddota/a
         gpres = gpres_noDE + w_dark_energy_t*grhov_t
         adotdota=(adotoa*adotoa-gpres)/2
-        
-        ! andrea
+
         pig = 32._dl/45/opacity(1)*k*(sigma+vb)
-        ! andrea
 
         !  First-order approximation to baryon-photon splip
         slip = - (2*adotoa/(1+pb43) + dopacity(1)/opacity(1))* (vb-3._dl/4*qg) &
@@ -2633,7 +2628,6 @@
             sigmadot = -2*adotoa*sigma-dgs/k+etak
 
             !Once know slip, recompute qgdot, pig, pigdot
-            ! andrea
             qgdot = k*(clxg/4._dl-pig/2._dl) +opacity(1)*slip
 
             pig = 32._dl/45/opacity(1)*k*(sigma+3._dl*qg/4._dl)*(1+(dopacity(1)*11._dl/6._dl/opacity(1)**2)) &
@@ -2643,7 +2637,6 @@
                 dopacity(1)*11._dl/6._dl/opacity(1)**2 ) &
                 + (32._dl/45._dl/opacity(1))*k*(sigmadot+3._dl*qgdot/4._dl)*(1+(11._dl/6._dl) &
                 *(dopacity(1)/opacity(1)**2))
-            ! andrea
 
             EV%pigdot = pigdot
 
@@ -2655,8 +2648,6 @@
 
         vbdot=vbdot+pb43/(1+pb43)*slip
         EV%pig = pig
-
-    ! andrea
     else
         if (.not. EV%TightCoupling .and. .not.EV%no_phot_multpoles)  then 
             vbdot = -adotoa*vb+cs2*k*clxb -photbar*(opac_phot*(4._dl/3*vb-qg) -opac_qgphot)
@@ -2664,22 +2655,20 @@
             vbdot=-adotoa*vb+cs2*k*clxb-photbar*opacity(1)*(4._dl/3*vb-qg)
         end if
     end if
-    ! andrea
 
     ayprime(ix_vb)=vbdot
 
     if (.not. EV%no_phot_multpoles) then
         !  Photon equations of motion
         ayprime(EV%g_ix)=clxgdot
-        ! andrea
+        !qgdot=4._dl/3*(-vbdot-adotoa*vb+delta_p_b*k)/pb43 &
         if (.not. EV%TightCoupling .and. .not.EV%no_phot_multpoles)  then 
-            qgdot=4._dl/3*(photbar*opacity(1)*(4._dl/3*vb-qg))/pb43 &
+        qgdot=4._dl/3*(photbar*opacity(1)*(4._dl/3*vb-qg))/pb43 &
             +EV%denlk(1)*clxg-EV%denlk2(1)*pig
         else
-            qgdot=4._dl/3*(-vbdot-adotoa*vb+cs2*k*clxb)/pb43 &
+        qgdot=4._dl/3*(-vbdot-adotoa*vb+cs2*k*clxb)/pb43 &
             +EV%denlk(1)*clxg-EV%denlk2(1)*pig  
         end if
-        ! andrea
         ayprime(EV%g_ix+1)=qgdot
 
         !  Use explicit equations for photon moments if appropriate
@@ -2688,33 +2677,24 @@
             polter = pig/10+9._dl/15*E2 !2/15*(3/4 pig + 9/2 E2)
             ix= EV%g_ix+2
             if (EV%lmaxg>2) then
-                ! andrea
                 pigdot=EV%denlk(2)*qg-EV%denlk2(2)*ay(ix+1)-opacity(1)*(pig - polter) &
                     +8._dl/15._dl*k*sigma
-                ! andrea
                 ayprime(ix)=pigdot
                 do  l=3,EV%lmaxg-1
                     ix=ix+1
-                ! andrea
                     ayprime(ix)=(EV%denlk(l)*ay(ix-1)-EV%denlk2(l)*ay(ix+1))-opacity(1)*ay(ix)
-                ! andrea
                 end do
                 ix=ix+1
                 !  Truncate the photon moment expansion
-                ! andrea
                 ayprime(ix)=k*ay(ix-1)-(EV%lmaxg+1)*cothxor*ay(ix) -opacity(1)*ay(ix)
-                ! andrea
             else !closed case
-                ! andrea
                 pigdot=EV%denlk(2)*qg-opacity(1)*(pig - polter) +8._dl/15._dl*k*sigma
-                ! andrea
                 ayprime(ix)=pigdot
             endif
             !  Polarization
             !l=2
             ix=EV%polind+2
             if (EV%lmaxgpol>2) then
-                ! andrea
                 ayprime(ix) = -opacity(1)*(ay(ix) - polter) - k/3._dl*ay(ix+1)
                 do l=3,EV%lmaxgpol-1
                     ix=ix+1
@@ -2726,62 +2706,55 @@
                     k*EV%poltruncfac*ay(ix-1)-(EV%lmaxgpol+3)*cothxor*ay(ix)
             else !closed case
                 ayprime(ix) = -opacity(1)*(ay(ix) - polter)
-                ! andrea
             endif
         end if
     end if
-    
-    ! andrea
+
     if (EV%Rayleigh) then
          !assume after tight coupling ended
-        do f_i = 1, num_cmb_freq
-            opac_rayleigh = etat%Recombination_rayleigh_eff(a)*State%akthom/a2*(min(1._dl,&
-                            freq_factors(f_i,1)/a2**2 + freq_factors(f_i,2)/a2**3  + freq_factors(f_i,3)/a2**4)) 
-            !max(0._dl,1-Recombination_xe(a))*akthom/a2**3
-            ! andrea
-            opac_tot=opac_rayleigh+opacity(1)
-            ! andrea
-            ind = EV%g_ix_freq + (f_i-1)*EV%freq_neq
-            ayprime(ind)=-k*ay(ind+1)
-            ! andrea
-            ayprime(ind+1)= EV%denlk(1)*ay(ind)-EV%denlk2(1)*ay(ind+2) + &
-                            4._dl/3*photbar*(-opacity(1)*ay(ind+1) + opac_rayleigh*(4._dl/3*vb-qg-ay(ind+1)))/pb43
-            ! andrea
-            E2=ay(EV%polind_freq + (f_i-1)*EV%freq_neq +2)
-            polter_freq = ay(ind+2)/10+9._dl/15*E2 !2/15*(3/4 pig + 9/2 E2)
-            if (EV%lmaxg>2) then
-                ayprime(ind+2)= EV%denlk(2)*ay(ind+1)-EV%denlk2(2)*ay(ind+3)-opac_tot*(ay(ind+2) - polter_freq) &
-                                -opac_rayleigh*(ay(EV%g_ix+2) - polter) 
-                ix= ind+2
-                do  l=3,EV%lmaxg-1
-                    ix=ix+1
-                    ayprime(ix)=(EV%denlk(l)*ay(ix-1)-EV%denlk2(l)*ay(ix+1))-opac_tot*ay(ix)-(opac_rayleigh)*ay(EV%g_ix+l)
-                end do
-                ix=ix+1
-                !  Truncate the photon moment expansion
-                ayprime(ix)=k*ay(ix-1)-(EV%lmaxg+1)*cothxor*ay(ix) -opac_tot*ay(ix)-opac_rayleigh*ay(EV%g_ix+EV%lmaxg)
-            else 
-                ayprime(ind+2)=EV%denlk(2)*ay(ind+1)-opac_tot*(ay(ind+2) - polter_freq)-opac_rayleigh*(ay(EV%g_ix+2) - polter) 
-            endif
-            !  Polarization
-            !l=2
-            ix=EV%polind_freq+(f_i-1)*EV%freq_neq + 2
-            if (EV%lmaxgpol>2) then
-                ayprime(ix) = -opac_tot*(ay(ix) - polter_freq) - k/3._dl*ay(ix+1)- (opac_rayleigh)*(ay(EV%polind+2) - polter)
-                do l=3,EV%lmaxgpol-1
-                    ix=ix+1
-                    ayprime(ix)=-opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+l) + (EV%denlk(l)*ay(ix-1)-EV%polfack(l)*ay(ix+1))
-                end do
-                ix=ix+1
-                !truncate
-                ayprime(ix)= -opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+EV%lmaxgpol) + &
-                             k*EV%poltruncfac*ay(ix-1)-(EV%lmaxgpol+3)*cothxor*ay(ix)
-            else !closed case
-                ayprime(ix) = -opac_tot*(ay(ix) - polter_freq)-opac_rayleigh*ay(EV%polind+2)
-            endif
-        end do
-    end if
-    ! andrea
+         do f_i = 1, num_cmb_freq
+                !write(*,*) 'freq_factors = ', freq_factors
+                opac_rayleigh = etat%Recombination_rayleigh_eff(a)*State%akthom/a2*(min(1._dl,&
+                  freq_factors(f_i,1)/a2**2 + freq_factors(f_i,2)/a2**3  + freq_factors(f_i,3)/a2**4))
+                opac_tot=opac_rayleigh+opacity(1)
+                ind = EV%g_ix_freq + (f_i-1)*EV%freq_neq
+                ayprime(ind)=-k*ay(ind+1)
+                ayprime(ind+1)= EV%denlk(1)*ay(ind)-EV%denlk2(1)*ay(ind+2) + &
+                    4._dl/3*photbar*(-opacity(1)*ay(ind+1) + opac_rayleigh*(4._dl/3*vb-qg-ay(ind+1)))/pb43
+                E2=ay(EV%polind_freq + (f_i-1)*EV%freq_neq +2)
+                polter_freq = ay(ind+2)/10+9._dl/15*E2 !2/15*(3/4 pig + 9/2 E2)
+                if (EV%lmaxg>2) then
+                     ayprime(ind+2)=EV%denlk(2)*ay(ind+1)-EV%denlk2(2)*ay(ind+3)-opac_tot*(ay(ind+2) - polter_freq) &
+                       -opac_rayleigh*(ay(EV%g_ix+2) - polter) 
+                     ix= ind+2
+                     do  l=3,EV%lmaxg-1
+                        ix=ix+1
+                        ayprime(ix)=(EV%denlk(l)*ay(ix-1)-EV%denlk2(l)*ay(ix+1))-opac_tot*ay(ix)-(opac_rayleigh)*ay(EV%g_ix+l)
+                     end do
+                     ix=ix+1
+                  !  Truncate the photon moment expansion
+                     ayprime(ix)=k*ay(ix-1)-(EV%lmaxg+1)*cothxor*ay(ix) -opac_tot*ay(ix)-opac_rayleigh*ay(EV%g_ix+EV%lmaxg)
+                else 
+                     ayprime(ind+2)=EV%denlk(2)*ay(ind+1)-opac_tot*(ay(ind+2) - polter_freq)-opac_rayleigh*(ay(EV%g_ix+2) - polter) 
+                endif
+        !  Polarization
+                    !l=2
+                    ix=EV%polind_freq+(f_i-1)*EV%freq_neq + 2
+                    if (EV%lmaxgpol>2) then
+                      ayprime(ix) = -opac_tot*(ay(ix) - polter_freq) - k/3._dl*ay(ix+1)- (opac_rayleigh)*(ay(EV%polind+2) - polter)
+                      do l=3,EV%lmaxgpol-1
+                       ix=ix+1
+                       ayprime(ix)=-opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+l) + (EV%denlk(l)*ay(ix-1)-EV%polfack(l)*ay(ix+1))
+                      end do
+                      ix=ix+1
+                      !truncate
+                      ayprime(ix)=-opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+EV%lmaxgpol) + &
+                        k*EV%poltruncfac*ay(ix-1)-(EV%lmaxgpol+3)*cothxor*ay(ix)
+                   else !closed case
+                      ayprime(ix) = -opac_tot*(ay(ix) - polter_freq)-opac_rayleigh*ay(EV%polind+2)
+                   endif
+         end do
+     end if
 
     if (.not. EV%no_nu_multpoles) then
         !  Massless neutrino equations of motion.
@@ -3021,147 +2994,59 @@
         dgpi_diff = 0  !sum (3*p_nu -rho_nu)*pi_nu
         pidot_sum = grhog_t*pigdot + grhor_t*pirdot
         clxnu =0
-
-        ! andrea
-        if (rayleigh_back .and. EV%Rayleigh .and. .not.EV%no_phot_multpoles )  then
-            call Phot_Integrate_L012(EV,y,drhophot,qgphot,piphot)
-            dgrho=dgrho + grhog_t*drhophot
-            dgq=dgq + grhog_t*qgphot
-            dgpi=dgpi + grhog_t*piphot
-        end if
-        ! andrea
-
         if (State%CP%Num_Nu_Massive /= 0) then
             call MassiveNuVarsOut(EV,ay,ayprime,a, adotoa, dgpi=dgpi, clxnu_all=clxnu, &
-                                  dgpi_diff=dgpi_diff, pidot_sum=pidot_sum)
+                dgpi_diff=dgpi_diff, pidot_sum=pidot_sum)
         end if
         gpres = gpres_noDE + w_dark_energy_t*grhov_t
         diff_rhopi = pidot_sum - (4*dgpi+ dgpi_diff)*adotoa + &
-                     State%CP%DarkEnergy%diff_rhopi_Add_Term(dgrho_de, dgq_de, grho, &
-                                                             gpres, w_dark_energy_t, State%grhok, adotoa, &
-                                                             EV%kf(1), k, grhov_t, z, k2, ayprime, ay, EV%w_ix)
-        ! andrea
-        s_ix=0
-        do f_i = 1, nscatter
-            if (.not. EV%no_phot_multpoles .and. EV%Rayleigh .and. f_i>1) then
-                ix_off=EV%g_ix_freq+(f_i-2)*EV%freq_neq
-                y(EV%g_ix:EV%g_ix+EV%freq_neq-1) = yin(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
-                                                   yin(ix_off:ix_off+EV%freq_neq-1)
-                yprime(EV%g_ix:EV%g_ix+EV%freq_neq-1) = yprimein(EV%g_ix:EV%g_ix+EV%freq_neq-1) + &
-                                        yprimein(ix_off:ix_off+EV%freq_neq-1)
+            State%CP%DarkEnergy%diff_rhopi_Add_Term(dgrho_de, dgq_de, grho, &
+            gpres, w_dark_energy_t, State%grhok, adotoa, &
+            EV%kf(1), k, grhov_t, z, k2, ayprime, ay, EV%w_ix)
+        phi = -((dgrho +3*dgq*adotoa/k)/EV%Kf(1) + dgpi)/(2*k2)
 
-                pig =y(EV%g_ix+2)
-                polter = 0.1_dl*pig+9._dl/15._dl*E(2)
-                pigdot=yprime(EV%g_ix+2)
-                octg=y(EV%g_ix+3)
-                octgprime=yprime(EV%g_ix+3)
-                clxg=y(EV%g_ix)
-                qg  =y(EV%g_ix+1)
-                qgdot =yprime(EV%g_ix+1)
-            end if
-        ! and
-        ! and
-        ! andrea
-            phi = -((dgrho +3*dgq*adotoa/k)/EV%Kf(1) + dgpi)/(2*k2)
+        if (associated(EV%OutputTransfer)) then
+            EV%OutputTransfer(Transfer_kh) = k/(State%CP%h0/100._dl)
+            EV%OutputTransfer(Transfer_cdm) = clxc
+            EV%OutputTransfer(Transfer_b) = clxb
+            EV%OutputTransfer(Transfer_g) = clxg
+            EV%OutputTransfer(Transfer_r) = clxr
+            EV%OutputTransfer(Transfer_nu) = clxnu
+            EV%OutputTransfer(Transfer_tot) =  dgrho_matter/grho_matter !includes neutrinos
+            EV%OutputTransfer(Transfer_nonu) = (grhob_t*clxb+grhoc_t*clxc)/(grhob_t + grhoc_t)
+            EV%OutputTransfer(Transfer_tot_de) =  dgrho/grho_matter
+            !Transfer_Weyl is k^2Phi, where Phi is the Weyl potential
+            EV%OutputTransfer(Transfer_Weyl) = k2*phi
+            EV%OutputTransfer(Transfer_Newt_vel_cdm)=  -k*sigma/adotoa
+            EV%OutputTransfer(Transfer_Newt_vel_baryon) = -k*(vb + sigma)/adotoa
+            EV%OutputTransfer(Transfer_vel_baryon_cdm) = vb
+            if (State%CP%do21cm) then
+                Tspin = State%CP%Recomb%T_s(a)
+                xe = State%CP%Recomb%x_e(a)
 
-            if (associated(EV%OutputTransfer)) then
-                EV%OutputTransfer(Transfer_kh) = k/(State%CP%h0/100._dl)
-                EV%OutputTransfer(Transfer_cdm) = clxc
-                EV%OutputTransfer(Transfer_b) = clxb
-                EV%OutputTransfer(Transfer_g) = clxg
-                EV%OutputTransfer(Transfer_r) = clxr
-                EV%OutputTransfer(Transfer_nu) = clxnu
-                EV%OutputTransfer(Transfer_tot) =  dgrho_matter/grho_matter !includes neutrinos
-                EV%OutputTransfer(Transfer_nonu) = (grhob_t*clxb+grhoc_t*clxc)/(grhob_t + grhoc_t)
-                EV%OutputTransfer(Transfer_tot_de) =  dgrho/grho_matter
-                !Transfer_Weyl is k^2Phi, where Phi is the Weyl potential
-                EV%OutputTransfer(Transfer_Weyl) = k2*phi
-                EV%OutputTransfer(Transfer_Newt_vel_cdm)=  -k*sigma/adotoa
-                EV%OutputTransfer(Transfer_Newt_vel_baryon) = -k*(vb + sigma)/adotoa
-                EV%OutputTransfer(Transfer_vel_baryon_cdm) = vb
-                if (State%CP%do21cm) then
-                    Tspin = State%CP%Recomb%T_s(a)
-                    xe = State%CP%Recomb%x_e(a)
+                tau_eps = a*line21_const*State%NNow/a**3/adotoa/Tspin/1000
+                delta_source2 = Get21cm_source2(a,clxb,clxg/4,Delta_Tm,Delta_xe,Tmat,&
+                    State%CP%TCMB/a,xe,k*(z+vb)/adotoa/3)
+                tau_fac = tau_eps/(exp(tau_eps)-1)
+                EV%OutputTransfer(Transfer_monopole) = ( clxb + Trad/(Tspin-Trad)*delta_source2 )  &
+                    + (tau_fac-1)*(clxb - (delta_source2 + clxg/4)  )
 
-                    tau_eps = a*line21_const*State%NNow/a**3/adotoa/Tspin/1000
-                    delta_source2 = Get21cm_source2(a,clxb,clxg/4,Delta_Tm,Delta_xe,Tmat,&
-                        State%CP%TCMB/a,xe,k*(z+vb)/adotoa/3)
-                    tau_fac = tau_eps/(exp(tau_eps)-1)
-                    EV%OutputTransfer(Transfer_monopole) = ( clxb + Trad/(Tspin-Trad)*delta_source2 )  &
-                        + (tau_fac-1)*(clxb - (delta_source2 + clxg/4)  )
+                EV%OutputTransfer(Transfer_vnewt) = tau_fac*k*(vb+sigma)/adotoa
+                EV%OutputTransfer(Transfer_Tmat) =  delta_TM
+                if (State%CP%SourceTerms%use_21cm_mK) then
+                    Tb = (1-exp(-tau_eps))*a*(Tspin-Trad)*1000
 
-                    EV%OutputTransfer(Transfer_vnewt) = tau_fac*k*(vb+sigma)/adotoa
-                    EV%OutputTransfer(Transfer_Tmat) =  delta_TM
-                    if (State%CP%SourceTerms%use_21cm_mK) then
-                        Tb = (1-exp(-tau_eps))*a*(Tspin-Trad)*1000
-
-                        EV%OutputTransfer(Transfer_monopole) = EV%OutputTransfer(Transfer_monopole)*Tb
-                        EV%OutputTransfer(Transfer_vnewt) = EV%OutputTransfer(Transfer_vnewt)*Tb
-                        EV%OutputTransfer(Transfer_Tmat) = EV%OutputTransfer(Transfer_Tmat)*Tb
-                    end if
+                    EV%OutputTransfer(Transfer_monopole) = EV%OutputTransfer(Transfer_monopole)*Tb
+                    EV%OutputTransfer(Transfer_vnewt) = EV%OutputTransfer(Transfer_vnewt)*Tb
+                    EV%OutputTransfer(Transfer_Tmat) = EV%OutputTransfer(Transfer_Tmat)*Tb
                 end if
             end if
-            if (associated(EV%OutputSources)) then
+        end if
 
-                EV%OutputSources = 0
-                call this%IonizationFunctionsAtTime(tau, a, opacity, dopacity, ddopacity, &
-                    visibility, dvisibility, ddvisibility, exptau, lenswindow)
-
-                tau0 = State%tau0
-                phidot = (1.0d0/2.0d0)*(adotoa*(-dgpi - 2*k2*phi) + dgq*k - &
-                    diff_rhopi+ k*sigma*(gpres + grho))/k2
-                !time derivative of shear
-                sigmadot = -adotoa*sigma - 1.0d0/2.0d0*dgpi/k + k*phi
-                !quadrupole source derivatives; polter = pi_g/10 + 3/5 E_2
-                polter = pig/10+9._dl/15*E(2)
-                ! and freestyle
-                polterdot = (1.0d0/10.0d0)*pigdot + (3.0d0/5.0d0)*Edot(2)
-                polterddot = -2.0d0/25.0d0*adotoa*dgq/(k*EV%Kf(1)) - 4.0d0/75.0d0*adotoa* &
-                    k*sigma - 4.0d0/75.0d0*dgpi - 2.0d0/75.0d0*dgrho/EV%Kf(1) - 3.0d0/ &
-                    50.0d0*k*octgdot*EV%Kf(2) + (1.0d0/25.0d0)*k*qgdot - 1.0d0/5.0d0 &
-                    *k*EV%Kf(2)*Edot(3) + (-1.0d0/10.0d0*pig + (7.0d0/10.0d0)* &
-                    polter - 3.0d0/5.0d0*E(2))*dopacity(1) + (-1.0d0/10.0d0*pigdot &
-                    + (7.0d0/10.0d0)*polterdot - 3.0d0/5.0d0*Edot(2))*opacity(1)
-                ! and freestyle
-                !Temperature source terms, after integrating by parts in conformal time
-
-                !2phi' term (\phi' + \psi' in Newtonian gauge), phi is the Weyl potential
-                ISW = 2*phidot*exptau(1)
-                monopole_source =  (-etak/(k*EV%Kf(1)) + 2*phi + clxg/4)*visibility(1)
-                doppler = ((sigma + vb)*dvisibility(1) + (sigmadot + vbdot)*visibility(1))/k
-                quadrupole_source = (5.0d0/8.0d0)*(3*polter*ddvisibility(1) + 6*polterdot*dvisibility(1) &
-                    + (k**2*polter + 3*polterddot)*visibility(1))/k**2
-                ! andrea NOT SURE
-                EV%OutputSources(s_ix+1) = ISW + doppler + monopole_source + quadrupole_source
-                ! andrea
-                ang_dist = f_K(tau0-tau)
-                if (tau < tau0) then
-                    !E polarization source
-                    ! and
-                    EV%OutputSources(s_ix+2)=visibility(1)*polter*(15._dl/8._dl)/(ang_dist**2*k2)
-                    ! and
-                    !factor of four because no 1/16 later
-                end if
-            ! andrea
-                if (rayleigh_diff .and. f_i>2) then
-                    EV%OutputSources(s_ix+1:s_ix+2)= EV%OutputSources(s_ix+1:s_ix+2) - EV%OutputSources(1:2)
-                    s_ix=s_ix+2
-                    if (size(EV%OutputSources) > 2 .and. f_i==1) then
-                        ! Get lensing sources
-                        if (tau>State%tau_maxvis .and. tau0-tau > 0.1_dl) then
-                            EV%OutputSources(3) = -2*phi*f_K(tau-State%tau_maxvis)/(f_K(tau0-State%tau_maxvis)*ang_dist)
-                            !We include the lensing factor of two here
-                        end if
-                        ! andrea
-                        s_ix=s_ix+1 
-                        ! andrea
-                    end if
-                end if
-            end if
-        end do
-        ! and
-        if (State%num_redshiftwindows > 0) then
-            call output_window_sources(EV, this, EV%OutputSources, ay, ayprime, &
+        if (associated(EV%OutputSources)) then
+          
+            if (State%num_redshiftwindows > 0) then
+                call output_window_sources(EV, this, EV%OutputSources, ay, ayprime, &
                 tau, a, adotoa, grho, gpres, &
                 k, etak, z, ayprime(ix_etak), phi, phidot, sigma, sigmadot, &
                 dgrho, clxg,clxb,clxc,clxnu, Delta_TM, Delta_xe, &
@@ -3169,29 +3054,105 @@
                 dgpi, pig, pigdot, diff_rhopi, &
                 polter, polterdot, polterddot, octg, octgdot, E, Edot, &
                 opacity, dopacity, ddopacity, visibility, dvisibility, ddvisibility, exptau)
-        end if
-        if (associated(EV%CustomSources)) then
-            select type(DE=>State%CP%DarkEnergy)
-            class is (TDarkEnergyEqnOfState)
-                cs2_de = DE%cs2_lam
-            class default
-                cs2_de=1
-            end select
-            block
-                procedure(TSource_func), pointer :: custom_sources_func
+            end if
 
-                call c_f_procpointer(CP%CustomSources%c_source_func,custom_sources_func)
+            if (associated(EV%CustomSources)) then
+                select type(DE=>State%CP%DarkEnergy)
+                class is (TDarkEnergyEqnOfState)
+                    cs2_de = DE%cs2_lam
+                class default
+                    cs2_de=1
+                end select
+                block
+                    procedure(TSource_func), pointer :: custom_sources_func
 
-                call custom_sources_func(EV%CustomSources, tau, a, adotoa, grho, gpres,w_dark_energy_t, cs2_de, &
-                     grhob_t,grhor_t,grhoc_t,grhog_t,grhov_t,grhonu_t, &
-                     k, etak, ayprime(ix_etak), phi, phidot, sigma, sigmadot, &
-                     dgrho, clxg,clxb,clxc,clxr,clxnu, dgrho_de/grhov_t, delta_p_b, &
-                     dgq, qg, qr, dgq_de/grhov_t, vb, qgdot, qrdot, vbdot, &
-                     dgpi, pig, pir, pigdot, pirdot, diff_rhopi, &
-                     polter, polterdot, polterddot, octg, octgdot, E, Edot, &
-                     opacity, dopacity, ddopacity, visibility, dvisibility, ddvisibility, exptau, &
-                     tau0, State%tau_maxvis, EV%Kf,f_K)
-            end block
+                    call c_f_procpointer(CP%CustomSources%c_source_func,custom_sources_func)
+
+                    call custom_sources_func(EV%CustomSources, tau, a, adotoa, grho, gpres,w_dark_energy_t, cs2_de, &
+                        grhob_t,grhor_t,grhoc_t,grhog_t,grhov_t,grhonu_t, &
+                        k, etak, ayprime(ix_etak), phi, phidot, sigma, sigmadot, &
+                        dgrho, clxg,clxb,clxc,clxr,clxnu, dgrho_de/grhov_t, delta_p_b, &
+                        dgq, qg, qr, dgq_de/grhov_t, vb, qgdot, qrdot, vbdot, &
+                        dgpi, pig, pir, pigdot, pirdot, diff_rhopi, &
+                        polter, polterdot, polterddot, octg, octgdot, E, Edot, &
+                        opacity, dopacity, ddopacity, visibility, dvisibility, ddvisibility, exptau, &
+                        tau0, State%tau_maxvis, EV%Kf,f_K)
+                end block
+            end if
+
+            EV%OutputSources = 0
+            call this%IonizationFunctionsAtTime(tau, a, opacity, dopacity, ddopacity, &
+                 visibility, dvisibility, ddvisibility, exptau, lenswindow)
+
+            tau0 = State%tau0
+            phidot = (1.0d0/2.0d0)*(adotoa*(-dgpi - 2*k2*phi) + dgq*k - &
+                     diff_rhopi+ k*sigma*(gpres + grho))/k2
+            !time derivative of shear
+            sigmadot = -adotoa*sigma - 1.0d0/2.0d0*dgpi/k + k*phi
+            !quadrupole source derivatives; polter = pi_g/10 + 3/5 E_2
+            polter = pig/10+9._dl/15*E(2)
+            polterdot = (1.0d0/10.0d0)*pigdot + (3.0d0/5.0d0)*Edot(2)
+            polterddot = -2.0d0/25.0d0*adotoa*dgq/(k*EV%Kf(1)) - 4.0d0/75.0d0*adotoa* &
+                         k*sigma - 4.0d0/75.0d0*dgpi - 2.0d0/75.0d0*dgrho/EV%Kf(1) - 3.0d0/ &
+                         50.0d0*k*octgdot*EV%Kf(2) + (1.0d0/25.0d0)*k*qgdot - 1.0d0/5.0d0 &
+                         *k*EV%Kf(2)*Edot(3) + (-1.0d0/10.0d0*pig + (7.0d0/10.0d0)* &
+                         polter - 3.0d0/5.0d0*E(2))*dopacity(1) + (-1.0d0/10.0d0*pigdot &
+                         + (7.0d0/10.0d0)*polterdot - 3.0d0/5.0d0*Edot(2))*opacity(1)
+            !Temperature source terms, after integrating by parts in conformal time
+
+            ! and fix
+            s_ix = 0
+            do f_i = 1, nscatter
+                if (.not. EV%no_phot_multpoles .and. EV%Rayleigh .and. f_i>1) then
+                    ix_off=EV%g_ix_freq+(f_i-2)*EV%freq_neq 
+                    y(EV%g_ix:EV%g_ix+EV%freq_neq-1) = yin(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
+                                                       yin(ix_off:ix_off+EV%freq_neq-1)
+                    yprime(EV%g_ix:EV%g_ix+EV%freq_neq-1) = yprimein(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
+                                                            yprimein(ix_off:ix_off+EV%freq_neq-1)
+
+                    pig = y(EV%g_ix+2)
+                    polter = 0.1_dl*pig+9._dl/15._dl*E(2)
+                    pigdot = yprime(EV%g_ix+2)
+                    octg = y(EV%g_ix+3)
+                    octgprime = yprime(EV%g_ix+3)
+                    clxg = y(EV%g_ix)
+                    qg  = y(EV%g_ix+1)
+                    qgdot = yprime(EV%g_ix+1)
+
+                end if
+
+                !2phi' term (\phi' + \psi' in Newtonian gauge), phi is the Weyl potential
+                ISW = 2*phidot*exptau(f_i)
+                monopole_source =  (-etak/(k*EV%Kf(1)) + 2*phi + clxg/4)*visibility(f_i)
+                doppler = ((sigma + vb)*dvisibility(f_i) + (sigmadot + vbdot)*visibility(f_i))/k
+                quadrupole_source = (5.0d0/8.0d0)*(3*polter*ddvisibility(f_i) + 6*polterdot*dvisibility(f_i) &
+                                    + (k**2*polter + 3*polterddot)*visibility(f_i))/k**2
+
+                EV%OutputSources(s_ix+1) = ISW + doppler + monopole_source + quadrupole_source
+                ang_dist = f_K(tau0-tau)
+                if (tau < tau0) then
+                    !E polarization source
+                    EV%OutputSources(s_ix+2)=visibility(1)*polter*(15._dl/8._dl)/(ang_dist**2*k2)
+                    !factor of four because no 1/16 later
+                end if
+
+                if (rayleigh_diff .and. f_i>2) then
+                     EV%OutputSources(s_ix+1:s_ix+2)= EV%OutputSources(s_ix+1:s_ix+2) - EV%OutputSources(1:2)
+                end if
+
+                s_ix=s_ix+2
+            
+                if (size(EV%OutputSources) > 2 .and. f_i==1) then
+                    ! and
+                    !Get lensing sources
+                    if (tau>State%tau_maxvis .and. tau0-tau > 0.1_dl) then
+                        EV%OutputSources(3) = -2*phi*f_K(tau-State%tau_maxvis)/(f_K(tau0-State%tau_maxvis)*ang_dist)
+                        !We include the lensing factor of two here
+                    end if
+                    s_ix=s_ix+1
+                end if
+            end do !f_1
+        !    and
         end if
     end if
 
@@ -3237,7 +3198,7 @@
     call this%values(tau,a,cs2,opacity)
     ! and
     ! andrea not sure
-    call this%values_array(tau,a,cs2,opacity)
+    !call this%values_array(tau,a,cs2,opacity)
     ! andrea
     if (k > 0.06_dl*epsw) then
         ep=ep0

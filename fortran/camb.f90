@@ -12,11 +12,12 @@
     implicit none
     contains
 
-    subroutine CAMB_TransfersToPowers(CData)
+    subroutine CAMB_TransfersToPowers(CData, CLData)
     !From Delta_p_l_k or time transfers to CMB powers and transfers to P(k)
     use CAMBmain
     use lensing
     type (CAMBdata) :: CData
+    class(TCLData) :: CLData
     !class(TThermoData) :: this
     logical :: want_tensors, want_vectors
 
@@ -33,13 +34,14 @@
             Cdata%OnlyTransfer = .true. !prevent ClTransferToCl
             Cdata%CP%WantTensors = .false.
             CData%CP%WantVectors = .false.
-            call TimeSourcesToCl(CData%ClData%CTransScal)
+            call TimeSourcesToCl(ClData%CTransScal, CLData)
             Cdata%CP%WantTensors = want_tensors
             CData%CP%WantVectors = want_vectors
             Cdata%OnlyTransfer = .false.
         end if
-        call ClTransferToCl(CData)
-        if (State%CP%DoLensing .and. global_error_flag==0) call lens_Cls(Cdata)
+        call ClTransferToCl(CData, CLData)
+        write(*,*) 'camb', global_error_flag
+        if (State%CP%DoLensing .and. global_error_flag==0) call lens_Cls(Cdata, CLData)
         if (global_error_flag/=0) return
     end if
 
@@ -48,12 +50,13 @@
     end subroutine CAMB_TransfersToPowers
 
     !Call this routine with a set of parameters to generate the results you want.
-    subroutine CAMB_GetResults(OutData, Params, this, etat,error, onlytransfer, onlytimesources)
+    subroutine CAMB_GetResults(OutData, Params, CLData, this, etat,error, onlytransfer, onlytimesources)
     use CAMBmain
     use lensing
     use Bispectrum
     type(CAMBdata)  :: OutData
     type(CAMBparams) :: Params
+    class(TCLData) :: CLData
     class(TThermoData) :: this
     class(TRecfast) :: etat
     integer, optional :: error !Zero if OK
@@ -63,7 +66,7 @@
 
     global_error_flag = 0
     call_again = .false.
-    call OutData%Free()
+    call OutData%Free(CLData)
     call SetActiveState(OutData)
     OutData%HasScalarTimeSources= DefaultFalse(onlytimesources)
     OutData%OnlyTransfer = DefaultFalse(onlytransfer) .or. OutData%HasScalarTimeSources
@@ -76,8 +79,7 @@
         P%WantScalars = .false.
         P%WantVectors = .false.
         call OutData%SetParams(P, call_again=call_again)
-        !write(*,*) 'dr1 1 :' ,ThermalNuBackground%dr1
-        if (global_error_flag==0) call cmbmain(this,etat)
+        if (global_error_flag==0) call cmbmain(this, etat, CLData)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
@@ -92,8 +94,7 @@
         P%WantScalars = .false.
         P%WantTensors = .false.
         call OutData%SetParams(P, call_again=call_again)
-        !write(*,*) 'dr1 2 :' ,ThermalNuBackground%dr1
-        if (global_error_flag==0) call cmbmain(this,etat)
+        if (global_error_flag==0) call cmbmain(this, etat, CLData)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
@@ -111,8 +112,7 @@
             P%WantTransfer  = .true.
         end if
         call OutData%SetParams(P)
-        !write(*,*) 'dr1 3 :' ,ThermalNuBackground%dr1(1)
-        if (global_error_flag==0) call cmbmain(this,etat)
+        if (global_error_flag==0) call cmbmain(this, etat, CLData)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
@@ -128,8 +128,7 @@
         P%WantTensors = .false.
         P%WantVectors = .false.
         call OutData%SetParams(P, call_again=call_again)
-        !write(*,*) 'dr1 4 :' ,ThermalNuBackground%dr1
-        if (global_error_flag==0) call cmbmain(this,etat)
+        if (global_error_flag==0) call cmbmain(this, etat, CLData)
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
@@ -147,11 +146,11 @@
 
     if (.not. OutData%OnlyTransfer .and. Params%WantCls .and. Params%WantScalars) then
         if (Params%DoLensing .and. global_error_flag==0) then
-            call lens_Cls(OutData)
+            call lens_Cls(OutData, CLData)
         end if
 
         if (do_bispectrum .and. global_error_flag==0) &
-            call GetBispectrum(OutData,OutData%CLData%CTransScal)
+            call GetBispectrum(OutData,CLData%CTransScal)
     end if
     if (global_error_flag/=0 .and. present(error)) error =global_error_flag
 
@@ -162,8 +161,9 @@
     !Output is l(l+1)C_l/2pi
     !If GC_Conventions = .false. use E-B conventions (as the rest of CAMB does)
     !Used by WriteFits only
-    subroutine CAMB_GetCls(State, Cls, lmax,GC_conventions)
+    subroutine CAMB_GetCls(State, CLData, Cls, lmax,GC_conventions)
     Type(CAMBdata) :: State
+    class(TCLData) :: CLData
     integer, intent(IN) :: lmax
     logical, intent(IN) :: GC_conventions
     real, intent(OUT) :: Cls(2:lmax,1:4)
@@ -173,15 +173,15 @@
     do l=2, lmax
         if (State%CP%WantScalars .and. l<= State%CP%Max_l) then
             if (State%CP%DoLensing) then
-                if (l<=State%CLData%lmax_lensed) &
-                    Cls(l,1:4) = State%CLData%Cl_lensed(l, CT_Temp:CT_Cross)
+                if (l<=CLData%lmax_lensed) &
+                    Cls(l,1:4) = CLData%Cl_lensed(l, CT_Temp:CT_Cross)
             else
-                Cls(l,1:2) = State%CLData%Cl_scalar(l, C_Temp:C_E)
-                Cls(l,4) = State%CLData%Cl_scalar(l, C_Cross)
+                Cls(l,1:2) = CLData%Cl_scalar(l, C_Temp:C_E)
+                Cls(l,4) = CLData%Cl_scalar(l, C_Cross)
             endif
         end if
         if (State%CP%WantTensors .and. l <= State%CP%Max_l_tensor) then
-            Cls(l,1:4) = Cls(l,1:4) + State%CLData%Cl_tensor(l, CT_Temp:CT_Cross)
+            Cls(l,1:4) = Cls(l,1:4) + CLData%Cl_tensor(l, CT_Temp:CT_Cross)
         end if
     end do
     if (GC_conventions) then
@@ -589,12 +589,13 @@
 
     end function CAMB_ReadParams
 
-    logical function CAMB_RunFromIni(Ini, this, etat, InputFile, ErrMsg)
+    logical function CAMB_RunFromIni(CLData, Ini, this, etat, InputFile, ErrMsg)
     use IniObjects
     use Lensing
     use constants
     use Bispectrum
     use CAMBmain
+    class(TCLData) :: CLData
     class(TIniFile) :: Ini
     class(TThermoData) :: this
     class(TRecfast) :: etat
@@ -738,7 +739,7 @@
         return
     end if
 
-    if (global_error_flag==0) call CAMB_GetResults(State,P,this,etat)
+    if (global_error_flag==0) call CAMB_GetResults(State,P, CLData, this,etat)
     if (global_error_flag/=0) then
         ErrMsg =  trim(global_error_message)
         return
@@ -752,13 +753,13 @@
     end if
 
     if (P%WantCls) then
-        call State%CLData%output_cl_files(State,ScalarFileName, ScalarCovFileName, TensorFileName, TotalFileName, &
+        call CLData%output_cl_files(State,ScalarFileName, ScalarCovFileName, TensorFileName, TotalFileName, &
             LensedFileName, LensedTotFilename, output_factor)
 
-        call State%CLData%output_lens_pot_files(State%CP,LensPotentialFileName, output_factor)
+        call CLData%output_lens_pot_files(State%CP,LensPotentialFileName, output_factor)
 
         if (P%WantVectors) then
-            call State%CLData%output_veccl_files(State%CP,VectorFileName, output_factor)
+            call CLData%output_veccl_files(State%CP,VectorFileName, output_factor)
         end if
 
 #ifdef WRITE_FITS
@@ -770,10 +771,11 @@
 
     end function CAMB_RunFromIni
 
-    logical function CAMB_RunIniFile(this, etat, InputFile, InpLen)
+    logical function CAMB_RunIniFile(CLData, this, etat, InputFile, InpLen)
     integer, intent(in) :: InpLen
     character(LEN=InpLen), intent(in) :: InputFile
     character(LEN=len(global_error_message)) :: ErrMsg
+    class(TCLData) :: CLData
     Type(TIniFile) :: Ini
     class(TThermoData) :: this
     class(TRecfast) :: etat
@@ -785,7 +787,7 @@
     call Ini%Open(InputFile, bad, .false.)
     Ini%Fail_on_not_found = .false.
     ErrMsg = ''
-    CAMB_RunIniFile = CAMB_RunFromIni(Ini, this, etat,InputFile, ErrMsg)
+    CAMB_RunIniFile = CAMB_RunFromIni(CLData, Ini, this, etat,InputFile, ErrMsg)
     call Ini%Close()
     if (ErrMsg/='') call GlobalError(ErrMsg,error_ini)
 
@@ -814,6 +816,7 @@
 
     subroutine CAMB_CommandLineRun(this,etat,InputFile)
     character(LEN=*), intent(in) :: InputFile
+    Type(TCLData) :: CLData
     Type(TIniFile) :: Ini
     class(TThermoData), intent(inout) :: this
     class(TRecfast), intent(inout) :: etat
@@ -834,7 +837,7 @@
     if (Ini%HasKey('DebugMsgs')) call Ini%Read('DebugMsgs', DebugMsgs)
 
     Ini%Fail_on_not_found = .false.
-    if (.not. CAMB_RunFromIni(Ini, this, etat, InputFile, ErrMsg)) then
+    if (.not. CAMB_RunFromIni(CLData, Ini, this, etat, InputFile, ErrMsg)) then
         write(*,*) trim(ErrMsg)
         error stop 'Invalid parameter'
     end if

@@ -505,6 +505,7 @@
     procedure :: output_lens_pot_files => TCLdata_output_lens_pot_files
     procedure :: NormalizeClsAtL => TCLdata_NormalizeClsAtL
     procedure :: output_veccl_files => TCLdata_output_veccl_files
+    procedure :: get_lmax_lensed => CAMBdata_get_lmax_lensed
     end type TCLdata
 
     Type TTimeSources
@@ -613,7 +614,9 @@
     procedure :: RedshiftAtTimeArr => CAMBdata_RedshiftAtTimeArr
     procedure :: BAO_D_v => CAMBdata_BAO_D_v
     procedure :: CosmomcTheta => CAMBdata_CosmomcTheta
-    procedure :: get_lmax_lensed => CAMBdata_get_lmax_lensed
+    ! and
+    !procedure :: get_lmax_lensed => CAMBdata_get_lmax_lensed
+    ! and
     procedure :: get_zstar => CAMBdata_get_zstar
     procedure :: DarkEnergyStressEnergy => CAMBdata_DarkEnergyStressEnergy
     procedure :: SetParams => CAMBdata_SetParams
@@ -626,6 +629,7 @@
     procedure :: invsinfunc
     procedure :: GetComputedPKRedshifts
     procedure :: binary_search
+    procedure :: binary_search2
     procedure, nopass :: PythonClass => CAMBdata_PythonClass
     procedure, nopass :: SelfPointer => CAMBdata_SelfPointer
     end type CAMBdata
@@ -638,6 +642,15 @@
     real(dl), intent(in) :: a
     real(dl) :: state_function
     END FUNCTION  state_function
+
+    FUNCTION state_function2(obj1, obj2, a)
+    use precision
+    import
+    class(CAMBdata) :: obj1
+    class(TThermoData) :: obj2
+    real(dl), intent(in) :: a
+    real(dl) :: state_function2
+    END FUNCTION  state_function2
     end interface
 
     !procedure(obj_function), private :: dtauda
@@ -708,11 +721,12 @@
 
     end subroutine CAMBdata_SelfPointer
 
-    subroutine CAMBdata_SetParams(this, P, error, DoReion, call_again, background_only)
+    subroutine CAMBdata_SetParams(this, P,  error, DoReion, call_again, background_only)
     !Initialize background variables; does not yet calculate thermal history
     use constants
     class(CAMBdata), target :: this
     type(CAMBparams), intent(in) :: P
+    !Type(TCLData) :: CLData
     real(dl) fractional_number, conv
     integer, optional :: error !Zero if OK
     logical, optional :: DoReion
@@ -987,12 +1001,12 @@
 
     end subroutine CAMBdata_SetParams
 
-    subroutine CAMBdata_Free(this)
+    subroutine CAMBdata_Free(this, CLData)
     class(CAMBdata) :: this
-
-    call Free_ClTransfer(this%CLdata%CTransScal)
-    call Free_ClTransfer(this%ClData%CTransVec)
-    call Free_ClTransfer(this%ClData%CTransTens)
+    class(TCLData) :: CLData
+    call Free_ClTransfer(CLData%CTransScal)
+    call Free_ClTransfer(ClData%CTransVec)
+    call Free_ClTransfer(ClData%CTransTens)
     call this%MT%Free()
     if (allocated(this%CAMB_Pk)) deallocate(this%CAMB_PK)
 
@@ -1409,9 +1423,10 @@
 
     end subroutine CAMBdata_GetBackgroundDensities
 
-    integer function CAMBdata_get_lmax_lensed(this)
-    class(CAMBdata) :: this
-    CAMBdata_get_lmax_lensed = this%CLdata%lmax_lensed
+    integer function CAMBdata_get_lmax_lensed(CLData)
+    class(TCLData) :: CLData
+    !class(CAMBdata) :: this
+    CAMBdata_get_lmax_lensed = CLData%lmax_lensed
     end function CAMBdata_get_lmax_lensed
 
     !JD 08/13 New function for nonlinear lensing of CMB + MPK compatibility
@@ -1641,23 +1656,25 @@
 
     end function noreion_optdepth
 
-    function ddragoptdepth_dz(this,z)
-    class(CAMBdata) :: this
+    function ddragoptdepth_dz(State, this, z)
+    class(CAMBdata) :: State
+    class(TThermoData) :: this
     real(dl) :: ddragoptdepth_dz
     real(dl), intent(in) :: z
     real(dl) :: a
 
     a = 1._dl/(1._dl+z)
-    ddragoptdepth_dz = noreion_doptdepth_dz(this,z)/this%ThermoData%r_drag0/a
+    ddragoptdepth_dz = noreion_doptdepth_dz(State,z)/this%r_drag0/a
 
     end function ddragoptdepth_dz
 
-    function dragoptdepth(this,z)
-    class(CAMBdata) :: this
+    function dragoptdepth(State, this, z)
+    class(CAMBdata) :: State
+    class(TThermoData) :: this
     real(dl) dragoptdepth
     real(dl),intent(in) :: z
 
-    dragoptdepth =  Integrate_Romberg(this,ddragoptdepth_dz, 0.d0, z, 1d-5, 20, 100)
+    dragoptdepth =  Integrate_Romberg2(State, this, ddragoptdepth_dz, 0.d0, z, 1d-5, 20, 100)
 
     end function dragoptdepth
 
@@ -1747,6 +1764,54 @@
     binary_search =  (try_t*(goal-last_bot) + try_b*(last_top-goal))/(last_top-last_bot)
 
     end function binary_search
+
+    real(dl) function binary_search2(State, this, func, goal, x1, x2, tol, widex1, widex2)
+    !This is about twice as inefficient as Brent
+    class(CAMBdata) :: State
+    class(TThermoData) :: this
+    procedure(state_function2) :: func
+    real(dl), intent(in) :: goal,x1,x2,tol
+    real(dl), intent(in), optional :: widex1, widex2 !Wider range in case of failure
+    real(dl) try_t, try_b, avg, D_try, last_bot, last_top, diff
+    integer count
+    logical wide
+
+    try_b = x1
+    try_t = x2
+    diff = tol*2
+    count = 0
+    wide = .false.
+    do while (diff > tol)
+        if (count>100) then
+            if (.not. wide .and. present(widex1)) then
+                count=0
+                wide=.true.
+                try_b=widex1
+                try_t=widex2
+            else
+                call GlobalError(FormatString('binary_search (e.g for optical depth) did not converge: ' //&
+                    'Base range %f-%f.',x1,x2),error_reionization)
+                binary_search2 = 0
+                return
+            end if
+        end if
+        avg = (try_b+try_t)/2
+        D_try = func(State, this, avg)
+        count = count+1
+        if (D_try < goal) then
+            try_b = avg
+            last_bot = D_try
+        else
+            try_t = avg
+            last_top = D_try
+        end if
+        diff = abs(D_try - goal)
+    end do
+    if (try_b==x1) last_bot = func(State, this, x1)
+    if (try_t==x2) last_top = func(State, this, x2)
+    binary_search2 =  (try_t*(goal-last_bot) + try_b*(last_top-goal))/(last_top-last_bot)
+
+    end function binary_search2
 
     function WindowKmaxForL(W,CP, ell) result(res)
     class(CAMBparams), intent(in) :: CP
@@ -1988,11 +2053,14 @@
         all_Cl(il) = a0*iCl(llo)+ b0*iCl(lhi)+((a0**3-a0)* ddCl(llo) &
             +(b0**3-b0)*ddCl(lhi))*ho**2/6
     end do
-
+    !write(*,*) 'args', a0*iCl(llo), b0*iCl(lhi), ((a0**3-a0)* ddCl(llo) &
+                       !+(b0**3-b0)*ddCl(lhi))*ho**2/6
+    !write(*,*) 'interpole', all_Cl(100)
     end subroutine InterpolateClArr
 
-    subroutine InterpolateClArrTemplated(lSet,iCl, all_Cl, max_ind, template_index)
+    subroutine InterpolateClArrTemplated(lSet, iCl, all_Cl, max_ind, template_index)
     class(lSamples), intent(in) :: lSet
+    !class(TCLData) :: CLData
     real(dl), intent(in) :: iCl(*)
     real(dl), intent(out):: all_Cl(lSet%lmin:*)
     integer, intent(in) :: max_ind
@@ -2007,7 +2075,7 @@
             !interpolate only the difference between the C_l and an accurately interpolated template.
             !Using unlensed for template, seems to be good enough
             maxdelta=max_ind
-            do while (lSet%l(maxdelta) > lmax_extrap_highl)
+                do while (lSet%l(maxdelta) > lmax_extrap_highl)
                 maxdelta=maxdelta-1
             end do
             DeltaCL(1:maxdelta)=iCL(1:maxdelta)- highL_CL_template(lSet%l(1:maxdelta), template_index)
@@ -2017,11 +2085,12 @@
             do il=lSet%lmin,lSet%l(maxdelta)
                 all_Cl(il) = all_Cl(il) +  highL_CL_template(il,template_index)
             end do
-
+    
             if (maxdelta < max_ind) then
+                !write(*,*) 'condition interne 2', (maxdelta < max_ind)
                 !directly interpolate high L where no t  emplate (doesn't effect lensing spectrum much anyway)
                 allocate(tmpall(lSet%lmin:lSet%l(max_ind)))
-                call InterpolateClArr(lSet,iCl, tmpall, max_ind)
+                call InterpolateClArr(lSet, iCl, tmpall, max_ind)
                 !overlap to reduce interpolation artefacts
                 all_cl(lSet%l(maxdelta-2):lSet%l(max_ind) ) = tmpall(lSet%l(maxdelta-2):lSet%l(max_ind))
                 deallocate(tmpall)
@@ -2029,9 +2098,7 @@
             return
         end if
     end if
-
-    call InterpolateClArr(lSet,iCl, all_Cl, max_ind)
-
+    !call InterpolateClArr(lSet, iCl, all_Cl, max_ind)
     end subroutine InterpolateClArrTemplated
 
     
@@ -2049,13 +2116,11 @@
         integer i
         real(dl) d
         
-        !write(*,*) 'thermo_values_array : tau, tauminn = ', tau, this%tauminn
         d=log(tau/this%tauminn)/this%dlntau+1._dl
         i=int(d)
         d=d-i
         if (i < 1) then
             !Linear interpolation if out of bounds (should not occur).
-            !write(*,*) 'tau, taumin, i, dlntau = ', tau, this%tauminn, i, this%dlntau
             call MpiStop('thermo out of bounds')
         else if (i >= this%nthermo) then
             cs2b=this%cs2(this%nthermo)
@@ -2156,8 +2221,6 @@
     real(dl) Thermo_OpacityToTime
     !Do this the bad slow way for now..
     !The answer is approximate
-    !write(*,*) 'opacity 1 :' , opacity
-    !write(*,*) 'dotmu 1 :' , this%dotmu(1,1)
     j =1
     do while(this%dotmu(j,1)> opacity)
         j=j+1
@@ -2175,7 +2238,7 @@
     use StringUtils
     class(TThermoData) :: this
     class(TRecfast) :: etat
-    class(CAMBdata), target :: State
+    class(CAMBdata), target:: State
     !class(TRecfast), allocatable :: Statee
     real(dl) :: taumin
     integer nthermo
@@ -2753,7 +2816,7 @@
     call splder(this%adot,this%dadot,nthermo,spline_data)
     if (dowinlens) call splder(this%winlens,this%dwinlens,nthermo,spline_data)
     if (CP%want_zdrag .or. CP%WantDerivedParameters) &
-        this%z_drag = State%binary_search(dragoptdepth, 1.d0, 800*z_scale, &
+        this%z_drag = binary_search2(State, this, dragoptdepth, 1.d0, 800*z_scale, &
         & max(zstar_max*1.1_dl,1200._dl*z_scale), 2d-3/background_boost, 100.d0*z_scale, 4000._dl*z_scale)
     !$OMP SECTION
     this%ScaleFactor(:) = this%scaleFactor/taus !a/tau
@@ -2789,7 +2852,7 @@
             DA = State%AngularDiameterDistance(this%z_star)/(1/(this%z_star+1))
             ThermoDerivedParams( derived_zdrag ) = this%z_drag
             !$OMP SECTION
-            !write(*,*)'r1, dr1', thermalNuBackground%r1(1)+thermalNuBackground%dr1(1)
+            rs =State%sound_horizon(this%z_drag)
             ThermoDerivedParams( derived_rdrag ) = rs
             ! and
             ThermoDerivedParams( derived_kD ) =  &
@@ -2883,8 +2946,8 @@
     ! Deallocate memory for Statee
     ! deallocate(Statee)
 
-    !write(*,*) 'tau end INIT = ', tau
-    !write(*,*) 'thermo_init taumin, tau = ',this%tauminn, tau
+
+    write(*,*) 'zdrag', this%z_drag
     end subroutine Thermo_Init
 
     ! subroutine thermoarr(tau,cs2b,opacity, dopacity)
@@ -3539,12 +3602,16 @@
     character(LEN=name_tag_len) :: cov_names((3+State%num_redshiftwindows)**2)
     Type(CAMBParams), pointer :: CP
     integer lmin
+    integer f_i_1,f_i_2
 
     CP=> State%CP
     lmin= CP%Min_l
 
     fact = PresentDefault(1._dl, factor)
-
+    
+    !write(*,*) 'test', lmin
+    !write(*,*) 'scal_freqs', this%Cl_lensed_freqs(2,1,4,4)
+    
     if (CP%WantScalars .and. ScalFile /= '') then
         last_C=min(C_PhiTemp,State%Scalar_C_last)
         unit = open_file_header(ScalFile, 'L', C_name_tags(:last_C))
@@ -3603,13 +3670,27 @@
         end do
         close(unit)
     end if
-
+    write(*,*) 'this%Cl_lensed_freqs', this%Cl_lensed_freqs(100,1,4,4)
     if (CP%WantScalars .and. CP%DoLensing .and. LensFile /= '') then
         unit = open_file_header(LensFile, 'L', CT_name_tags)
         do il=lmin, this%lmax_lensed
             write(unit,'(1I6,4E15.6)')il, fact*this%Cl_lensed(il, CT_Temp:CT_Cross)
         end do
         close(unit)
+        if (num_cmb_freq>0) then
+            open(newunit=unit,file=trim(LensFile)//'_freqs',form='formatted',status='replace')
+            write(unit,'('//trim(IntToStr(num_cmb_freq))//'E15.5)') phot_freqs
+            close(unit)
+            do f_i_1=1,num_cmb_freq
+                do f_i_2=1,num_cmb_freq
+                    open(newunit=unit,file=trim(LensFile)//trim(concat('_',f_i_1,'_',f_i_2)),form='formatted',status='replace')
+                        do il=lmin, this%lmax_lensed
+                            write(unit,'(1I6,4E15.6)')il, fact*this%Cl_lensed_freqs(il, CT_Temp:CT_Cross,f_i_1,f_i_2)
+                        end do
+                    close(unit)
+                end do
+            end do
+        end if
     end if
 
 
