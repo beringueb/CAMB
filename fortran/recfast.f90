@@ -373,8 +373,8 @@
         derived_thetaEQ=12, derived_theta_rs_EQ = 13
     integer, parameter :: nthermo_derived = 13
     ! andrea
-    integer, parameter :: num_cmb_freq = 6 !!!
-    logical :: rayleigh_diff = .true.
+    integer, parameter :: num_cmb_freq = 6!!!
+    logical :: rayleigh_diff = .false.
     logical :: rayleigh_pows(3) = [.true.,.true.,.true.]
     logical :: rayleigh_back_approx = .false.
     integer, parameter :: nscatter = num_cmb_freq+1
@@ -2053,9 +2053,7 @@
         all_Cl(il) = a0*iCl(llo)+ b0*iCl(lhi)+((a0**3-a0)* ddCl(llo) &
             +(b0**3-b0)*ddCl(lhi))*ho**2/6
     end do
-    !write(*,*) 'args', a0*iCl(llo), b0*iCl(lhi), ((a0**3-a0)* ddCl(llo) &
-                       !+(b0**3-b0)*ddCl(lhi))*ho**2/6
-    !write(*,*) 'interpole', all_Cl(100)
+
     end subroutine InterpolateClArr
 
     subroutine InterpolateClArrTemplated(lSet, iCl, all_Cl, max_ind, template_index)
@@ -2087,6 +2085,7 @@
             end do
     
             if (maxdelta < max_ind) then
+                write(*,*) 'here3', lSet%use_spline_template
                 !write(*,*) 'condition interne 2', (maxdelta < max_ind)
                 !directly interpolate high L where no t  emplate (doesn't effect lensing spectrum much anyway)
                 allocate(tmpall(lSet%lmin:lSet%l(max_ind)))
@@ -2098,7 +2097,9 @@
             return
         end if
     end if
-    !call InterpolateClArr(lSet, iCl, all_Cl, max_ind)
+    
+    call InterpolateClArr(lSet, iCl, all_Cl, max_ind)
+
     end subroutine InterpolateClArrTemplated
 
     
@@ -2277,11 +2278,13 @@
     real(dl) elec_fac
     ! andrea
     real(dl), parameter :: nu_eff = 3101692._dl !3125349._dl is approx from Yu paper
+    real(dl) num_cmb_freq_val
 
     CP => State%CP
 
     if (num_cmb_freq<10) then
         phot_freqs(1:6) = [0, 143, 217,353, 545, 857]
+        !phot_freqs = 0
 !       phot_freqs(1:8) = [220,265,300,320,295,460,555,660]*1.085 !Prism
         do i=1, size(phot_freqs)
             q = phot_freqs(i)/56.8
@@ -2303,7 +2306,14 @@
             end if
         end do
     else
-        dq = 18/real(num_cmb_freq)
+        num_cmb_freq_val = real(num_cmb_freq)
+        if (num_cmb_freq_val == 0) then
+            dq = 1
+        else
+            dq = 18/num_cmb_freq_val
+        end if
+        !dq = 18/real(num_cmb_freq)
+        ! and fix
         do i=1,num_cmb_freq
             q=(i-0.5d0)*dq
             phot_freqs(i) = 56.8*q !phot_freqs in GHz
@@ -3418,18 +3428,19 @@
                              exptau(nscatter), opacity(nscatter), dopacity(nscatter), ddopacity(nscatter)
     real(dl), intent(out) :: lenswin 
     real(dl) d, cs2
-    integer :: i, scat
+    integer :: i, scat, kays
 
     call this%Values_array(tau,a,cs2,opacity,dopacity)
-    !write(*,*) ' IonizationFunctionsAtTime tau, tauminn = ', tau, this%tauminn
+
     d=log(tau/this%tauminn)/this%dlntau+1._dl
     i=int(d)
     d=d-i
-    ! andrea big change
+    ! andrea
     do scat = 1, nscatter
     ! 
         if (i < this%nthermo) then
             ! andrea change
+            write(*,*) 'emmu', this%emmu(i, scat)
             ddopacity(scat) = (this%dddotmu(i, scat) + d * (this%ddddotmu(i, scat) + d * (3.0_dl * (this%dddotmu(i + 1, scat) &
                 - this%dddotmu(i, scat)) - 2.0_dl * this%ddddotmu(i, scat) - this%ddddotmu(i + 1, scat) &
                 + d * (this%ddddotmu(i, scat) + this%ddddotmu(i + 1, scat) + 2.0_dl * (this%dddotmu(i, scat) &
@@ -3444,7 +3455,10 @@
                     -2._dl*this%dwinlens(i)-this%dwinlens(i+1)+d*(this%dwinlens(i)+this%dwinlens(i+1) &
                     +2._dl*(this%winlens(i)-this%winlens(i+1)))))
             end if
-            vis(scat)=opacity(scat)*exptau(scat)
+            vis(scat)= opacity(scat)*exptau(scat)
+            !if (vis(scat)  > 0.2) then
+            !    write(*,*) 'args1', exptau(scat), opacity(scat)
+            !end if 
             dvis(scat)=exptau(scat)*(opacity(scat)**2+dopacity(scat))
             ddvis(scat)=exptau(scat)*(opacity(scat)**3+3*opacity(scat)*dopacity(scat)+ddopacity(scat))
         else
@@ -3452,13 +3466,24 @@
             ddopacity(scat)=this%dddotmu(this%nthermo,scat)
             exptau(scat)=this%emmu(this%nthermo,scat)
             vis(scat)=opacity(scat)*exptau(scat)
+            !if (vis(scat)  > 0.2) then
+            !    write(*,*) 'args2', exptau(scat), opacity(scat)
+            !end if 
             dvis(scat)=exptau(scat)*(opacity(scat)**2+dopacity(scat))
             ddvis(scat)=exptau(scat)*(opacity(scat)**3+3._dl*opacity(scat)*dopacity(scat)+ddopacity(scat))
             ! 
         end if
     ! 
     end do
-    ! 
+
+    !do kays = 1, nscatter
+    !    if (vis(kays)  > 0.2) then
+    !        write(*,*) 'vis recfast : ', vis(kays), kays
+            !        write(*,*) 'visibility(kays) : ', visibility(kays)
+    !    end if
+    !end do
+
+    !write(*,*) 'vis zero', vis(1)
     end subroutine IonizationFunctionsAtTime
 
     subroutine Init_ClTransfer(CTrans)
@@ -3540,6 +3565,7 @@
             if (CP%want_cl_2D_array) then
                 if (allocated(this%Cl_scalar_array)) deallocate(this%Cl_scalar_array)
                 ! andrea
+                !write(*,*) 'num_redshift', State%num_redshiftwindows
                 allocate(this%Cl_scalar_Array(CP%Min_l:CP%Max_l, &
                     3+State%num_redshiftwindows+num_cmb_freq*2+CP%CustomSources%num_custom_sources, &
                     3+State%num_redshiftwindows+num_cmb_freq*2+CP%CustomSources%num_custom_sources))
@@ -3670,7 +3696,8 @@
         end do
         close(unit)
     end if
-    write(*,*) 'this%Cl_lensed_freqs', this%Cl_lensed_freqs(100,1,4,4)
+    write(*,*) 'this%Cl_lensed_freqs', this%Cl_lensed_freqs(100,4,4,4)
+    
     if (CP%WantScalars .and. CP%DoLensing .and. LensFile /= '') then
         unit = open_file_header(LensFile, 'L', CT_name_tags)
         do il=lmin, this%lmax_lensed

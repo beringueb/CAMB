@@ -97,6 +97,7 @@
     do l= State%CP%min_l,State%CP%max_l
         ! Cl_scalar(l,1,C_Phi) is l^4 C_phi_phi
         CPP(l) = CLdata%Cl_scalar(l,C_Phi)*(l+1)**2/real(l,dl)**2/const_twopi
+        !write(*,*) 'CPP args : ', CLdata%Cl_scalar(l,C_Phi)
     end do
 
     !write(*,*) 'l CorrFuncFullSky= ', CLData%CTransScal%ls%l(1)
@@ -256,6 +257,7 @@
             do l=lmin,CP%Max_l
                 ! (2*l+1)l(l+1)/4pi C_phi_phi: Cl_scalar(l,1,C_Phi) is l^4 C_phi_phi
                 Cphil3(l) = CPP(l)*(l+0.5_dl)/real((l+1)*l, dl)
+                !write(*,*) 'args out2', CPP(l), (l+0.5_dl), real((l+1)*l, dl)
                 fac = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
                 if (f_i_2>1 .or. f_i_2>1) then
                     CTT(l) =   CLData%Cl_Scalar_Array(l,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)*fac
@@ -280,7 +282,7 @@
                     !Fill in tail from template
                     sc = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
                     Cphil3(l) = highL_CL_template(l, C_Phi)*fac*sc
-
+                    
                     CTT(l) =  highL_CL_template(l, C_Temp)*fac2*sc
                     CEE(l) =  highL_CL_template(l, C_E)*fac2 *sc
                     CTE(l) =  highL_CL_template(l, C_Cross)*fac2*sc
@@ -293,6 +295,7 @@
                 do l=2, lmax
                     sc = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
                     Cphil3(l) =  sc * highL_CL_template(l, C_Phi) * ALens_Fiducial
+                    !write(*,*) 'args out', sc, highL_CL_template(l, C_Phi), ALens_Fiducial
                 end do
             end if
 
@@ -343,7 +346,7 @@
 
                     sigmasq = sigmasq  +  (1-d_11(l))*Cphil3(l)
                     Cg2 = Cg2  + d_m11(l)*Cphil3(l)
-
+                    !write(*,*) 'args in', d_m11(l), Cphil3(l)
                     d_22(l) = ( ((4*x-8)/fac2 + llp1)*P(l) &
                         + 4*fac*( fac2 + (x - 2)/llp1)*dP(l) )/ lfacs2(l)
 
@@ -451,6 +454,8 @@
                     fac = ( (X000**2-1) + Cg2sq*fac1)*P(l)+ Cg2sq*fac3*d2m2 &
                         + 8/llp1* fac1*Cg2*dm11
 
+                    !write(*,*) 'args : ', X000, Cg2sq, Cg2
+
                     corrcontribs(j,1)=  CTT(l) * fac
 
                     fac2=(Cg2*dX022)**2+(X022**2-1)
@@ -473,28 +478,33 @@
                     corrcontribs(j,4)= CTE(l) * fac
 
                 end do
+                !write(*,*) 'CTT, CTE, CTEE', CTT(100), CEE(100), CTE(100)
+                !write(*,*) 'fac', fac
 
                 do j=1,4
                     corr(j) = sum(corrcontribs(1:14,j))+interp_fac*sum(corrcontribs(15:jmax,j))
                 end do
+                !write(*,*) 'corr4',corr(4)
 
                 !if (short_integral_range .and. i>npoints-20) &
                 !        corr=corr*exp(-(i-npoints+20)**2/150.0) !taper the end to help prevent ringing
 
                 if (short_integral_range .and. i>npoints-apodize_point_width*3) &
                     corr=corr*exp(-(i-npoints+apodize_point_width*3)**2/real(2*apodize_point_width**2))
+                !write(*,*) 'corr4',corr(4)
                 !taper the end to help prevent ringing
-
 
                 !Interpolate contributions
                 !Increasing interp_fac and using this seems to be slower than above
                 if (.false.) then
+                    !write(*,*) 'here0 ?', short_integral_range
                     if (abs(sum(corrcontribs(1:jmax,1)))>1e-11) print *,i,sum(corrcontribs(1:jmax,1))
                     do j=1,4
                         call spline_def(xl,corrcontribs(:,j),jmax,ddcontribs(:,j))
                     end do
                     corr=0
                     llo=1
+                    write(*,*) 'lmin, lmax', lmin, lmax
                     do l=lmin,lmax
                         if ((l > ls(llo+1)).and.(llo < jmax)) then
                             llo=llo+1
@@ -515,10 +525,10 @@
                             fac1* ddcontribs(llo,3) +fac2*ddcontribs(lhi,3)
                         corr(4) = Corr(4)+ a0*corrcontribs(llo,4)+ b0*corrcontribs(lhi,4)+ &
                             fac1* ddcontribs(llo,4) +fac2*ddcontribs(lhi,4)
-
+                        !write(*,*) 'contrib', corrcontribs(llo,3)
                     end do
                 end if
-
+            
                 !$  thread_ix = OMP_GET_THREAD_NUM()+1
 
                 do l=lmin, CLout%lmax_lensed
@@ -529,6 +539,7 @@
 
                     T2 = corr(2)* d_22(l)
                     T4 = corr(3)* d_2m2(l)
+                    !write(*,*) 'fabric arg s:', corr(2), corr(3)
 
 
                     lens_contrib(CT_E, l, thread_ix)= lens_contrib(CT_E,l, thread_ix) + &
@@ -538,7 +549,7 @@
 
                     lens_contrib(CT_Cross, l, thread_ix)= lens_contrib(CT_Cross,l, thread_ix) + &
                         corr(4)*d_20(l)*sinth
-
+                    !write(*,*) 'fabric arg s:', T2,T4, halfsinth
                 end do
 
             end do
@@ -576,7 +587,11 @@
         !end if !loop over different initial power spectra
         end do !frequencies
         end do !frequencies
-
+        !write(*,*) 'args : ', sum(lens_contrib(CT_B,l,:)), fac
+        !write(*,*) 'CT_T : ', CLData%Cl_lensed_freqs(100,1,4,4)
+        !write(*,*) 'CT_E : ', CLData%Cl_lensed_freqs(100,2,4,4)
+        !write(*,*) 'CT_B : ', CLData%Cl_lensed_freqs(100,3,4,4)
+        !write(*,*) 'CT_Cross : ', CLData%Cl_lensed_freqs(100,4,4,4)
         if (DebugMsgs) call Timer%WriteTime('Time for corr lensing')
     end associate
 

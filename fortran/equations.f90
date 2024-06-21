@@ -398,7 +398,7 @@
         ! andrea
         else if (next_switch == EV%RayleighSwitchOnTime) then
             EVout%RayleighSwitchOnTime = noSwitch
-            EVout%Rayleigh = .true.
+            EVout%Rayleigh = .false.
             call SetupScalarArrayIndices(EVout)
             call CopyScalarVariableArray(y,yout, EV, EVout)
             EV=EVout
@@ -524,7 +524,7 @@
         y(EV%g_ix+2)= 32._dl/45._dl*EV%k_buf/opacity(1)*y(ixt_shear)
         y(EV%E_ix+2) = y(EV%g_ix+2)/4
         ! andrea
-        EVout%Rayleigh = .true.
+        EVout%Rayleigh = .false.
         call SetupTensorArrayIndices(EVout)
         call CopyTensorVariableArray(y,yout, EV, EVout)
         EV=EVout
@@ -2030,7 +2030,7 @@
     else
         EV%RayleighSwitchOnTime=State%tau0+1
     end if
-        EV%Rayleigh = .false.
+    EV%Rayleigh = .false.
     ! andrea
 
     y=0
@@ -2417,7 +2417,7 @@
     real(dl) ISW, quadrupole_source, doppler, monopole_source, tau0, ang_dist
     real(dl) dgrho_de, dgq_de, cs2_de
     ! andrea
-    integer f_i, ix_off, s_ix
+    integer f_i, ix_off, s_ix, kays
     real(dl) drhophot,qgphot,piphot,opac_qgphot, opac_phot, octgprime
     real(dl) polter_freq, opac_rayleigh, opac_tot
     ! andrea
@@ -3081,8 +3081,16 @@
             end if
 
             EV%OutputSources = 0
-            call this%IonizationFunctionsAtTime(tau, a, opacity, dopacity, ddopacity, &
+
+            call IonizationFunctionsAtTime(this, tau, a, opacity, dopacity, ddopacity, &
                  visibility, dvisibility, ddvisibility, exptau, lenswindow)
+
+            !do kays = 1, nscatter
+            !    if (visibility(kays)  > 0.2) then
+                    !write(*,*) 'visibility : ', vis(scat), scat
+            !        write(*,*) 'visibility(kays) : ', visibility(kays)
+            !    end if
+            !end do
 
             tau0 = State%tau0
             phidot = (1.0d0/2.0d0)*(adotoa*(-dgpi - 2*k2*phi) + dgq*k - &
@@ -3102,6 +3110,7 @@
 
             ! and fix
             s_ix = 0
+            !write(*,*) 'nscatter', nscatter
             do f_i = 1, nscatter
                 if (.not. EV%no_phot_multpoles .and. EV%Rayleigh .and. f_i>1) then
                     ix_off=EV%g_ix_freq+(f_i-2)*EV%freq_neq 
@@ -3118,9 +3127,8 @@
                     clxg = y(EV%g_ix)
                     qg  = y(EV%g_ix+1)
                     qgdot = yprime(EV%g_ix+1)
-
+                    !exptau(f_i) = exptau(1)
                 end if
-
                 !2phi' term (\phi' + \psi' in Newtonian gauge), phi is the Weyl potential
                 ISW = 2*phidot*exptau(f_i)
                 monopole_source =  (-etak/(k*EV%Kf(1)) + 2*phi + clxg/4)*visibility(f_i)
@@ -3130,15 +3138,20 @@
 
                 EV%OutputSources(s_ix+1) = ISW + doppler + monopole_source + quadrupole_source
                 ang_dist = f_K(tau0-tau)
+                if (EV%OutputSources(4) < -0.5) then
+                    !write(*,*) 'ISW : ', ISW + doppler + monopole_source + quadrupole_source
+                    !write(*,*) 'ISW', monopole_source, doppler, quadrupole_source
+                    !write(*,*) 'visibility', visibility(f_i)
+                end if
                 if (tau < tau0) then
                     !E polarization source
                     EV%OutputSources(s_ix+2)=visibility(1)*polter*(15._dl/8._dl)/(ang_dist**2*k2)
                     !factor of four because no 1/16 later
                 end if
 
-                if (rayleigh_diff .and. f_i>2) then
-                     EV%OutputSources(s_ix+1:s_ix+2)= EV%OutputSources(s_ix+1:s_ix+2) - EV%OutputSources(1:2)
-                end if
+                !if (rayleigh_diff .and. f_i>2) then
+                !     EV%OutputSources(s_ix+1:s_ix+2)= EV%OutputSources(s_ix+1:s_ix+2) - EV%OutputSources(1:2)
+                !end if
 
                 s_ix=s_ix+2
             
@@ -3153,9 +3166,65 @@
                 end if
             end do !f_1
         !    and
+        !if (EV%OutputSources(1) < -0.5) then
+        !    EV%OutputSources(1) = 0.0005
+        !end if
+        !if (EV%OutputSources(2) < -0.5) then
+        !    EV%OutputSources(2) = 0.0005
+        !end if
+        !if (EV%OutputSources(3) < -0.5) then
+        !    EV%OutputSources(3) = 0.0005
+        !end if
+        !if (EV%OutputSources(4) < -0.5) then
+        !    EV%OutputSources(4) = 0.0005
+        !end if
+        !if (EV%OutputSources(5) < -0.5) then
+        !    EV%OutputSources(5) = 0.0005
+        !end if
+        !if (EV%OutputSources(6) < -0.5) then
+        !    EV%OutputSources(6) = 0.0005
+        !end if
+        !if (EV%OutputSources(7) < -0.5) then
+        !    EV%OutputSources(7) = 0.0005
+        !end if
+        !if (EV%OutputSources(8) < -0.5) then
+        !    EV%OutputSources(8) = 0.0005
+        !end if
+        !if (EV%OutputSources(9) < -0.5) then
+        !    EV%OutputSources(9) = 0.0005
+        !end if
+        !if (EV%OutputSources(10) < -0.5) then
+        !    EV%OutputSources(10) = 0.0005
+        !end if
+        !if (EV%OutputSources(11) < -0.5) then
+        !    EV%OutputSources(11) = 0.0005
+        !end if
+        !if (EV%OutputSources(12) < -0.5) then
+        !    EV%OutputSources(12) = 0.0005
+        !end if
+        !if (EV%OutputSources(13) < -0.5) then
+        !    EV%OutputSources(13) = 0.0005
+        !end if
+        !if (EV%OutputSources(14) < -0.5) then
+        !    EV%OutputSources(14) = 0.0005
+        !end if
+        !if (EV%OutputSources(15) < -0.5) then
+        !    EV%OutputSources(15) = 0.0005
+        !end if
+        
+            !write(*,*) 'EV%OutputSources(4)', EV%OutputSources(4)
+            !write(*,*) 'test', (tau>State%tau_maxvis .and. tau0-tau > 0.1_dl)
+            !write(*,*) 'EV%OutputSources(1)', EV%OutputSources(1)
+            !write(*,*) 'EV%OutputSources(2)', EV%OutputSources(2)
+            !write(*,*) 'EV%OutputSources(3)', EV%OutputSources(3)
+        !end if
         end if
     end if
 
+    !if (EV%OutputSources(4) < -1.0) 
+    !write(*,*) 'EV%OutputSources', EV%OutputSources
+    !write(*,*) 'EV%OutputSources(4)', EV%OutputSources(4)
+    
     end subroutine derivs
 
     subroutine derivsv(EV,this,etat,n,tau,yv,yvprime)

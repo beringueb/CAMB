@@ -419,9 +419,10 @@
     integer, intent(in) :: ncustomsources
     integer, intent(in) :: ell_scales(ncustomsources)
     TYPE(C_FUNPTR), INTENT(IN) :: c_source_func
-
+    !write(*,*) 'HERE'
     this%CustomSources%num_custom_sources = ncustomsources
     if (allocated(this%CustomSources%custom_source_ell_scales)) deallocate(this%CustomSources%custom_source_ell_scales)
+    !write(*,*) 'ncustomsources', ncustomsources
     if (ncustomsources > 0) then
         this%CustomSources%c_source_func = c_source_func
         allocate(this%CustomSources%custom_source_ell_scales(ncustomsources), source=ell_scales)
