@@ -314,8 +314,8 @@
             allocate(iCl_Array(CLdata%CTransScal%ls%nl, &
                 CLdata%CTransScal%NumSources,CLdata%CTransScal%NumSources))
             iCl_Array = 0
+            !write(*,*) 'nn calcScalcCls', iCl_array(1000,12,12)
         end if
-        write(*,*) 'GOAL', CLData%CTransScal%limber_l_min(3)
         call CalcLimberScalCls(CLData%CTransScal)
         call CalcScalCls(CLData%CTransScal)
         if (DebugMsgs .and. Feedbacklevel > 0) write (*,*) 'CalcScalCls'
@@ -377,7 +377,6 @@
 
     do i =winmin, State%num_redshiftwindows
         s_ix = 3+i
-        write(*,*) 'condi 1 :', CTrans%limber_l_min(s_ix)
         if (CTrans%limber_l_min(s_ix) /=0) then
             do j= i, State%num_redshiftwindows
                 s_ix2 = 3+j
@@ -411,7 +410,7 @@
                         if (State%CP%want_cl_2D_array) then
                             iCl_Array(ell,s_ix,s_ix2) = Cl
                             if (i/=j) iCl_Array(ell,s_ix2,s_ix) = Cl
-                        write(*,*) 'Cl', Cl
+                        !write(*,*) 'Cl', Cl
                         end if
                     end do
                     !$OMP END PARALLEL DO
@@ -1050,6 +1049,10 @@
             call output(EV, this, etat, CLData, y,j, tau, sources, CP%CustomSources%num_custom_sources)
 
             ThisSources%LinearSrc(EV%q_ix,:,j)=sources
+            !if (j == 2) then
+                !write(*,*) 'lasts', ThisSources%LinearSrc(EV%q_ix,12,2)
+            !    write(*,*) 'lasts1', tau
+            !end if
             !if (EV%q_ix == 1) write(*,*) 'EV', EV%q_ix
             !if (EV%q_ix == 1) then
             !    write(*,*) 'lasts', sources
@@ -1245,14 +1248,15 @@
     allocate(ScaledSrc, source = ThisSources%LinearSrc)
 
     !write(*,*) 'advance', sum(ScaledSrc(1,4,:))
-
+    !ScaledSrc(klo,:,i)
     !write(*,*) 'Src', ScaledSrc(2,:,2)
-
+    
     !$OMP PARALLEL DO DEFAULT(SHARED), SCHEDULE(STATIC), &
     !$OMP & PRIVATE(i, scaling, ddScaling, tf_lo, tf_hi, tau, ho, a0, b0, ascale)
     do ik=1, ThisSources%Evolve_q%npoints
         if (CP%Do21cm) then
             ScaledSrc(ik, 4:, :) = ScaledSrc(ik, 4:, :) * State%CAMB_Pk%nonlin_ratio(ik,1)
+
         elseif (ThisSources%Evolve_q%points(ik)/(CP%H0/100) >  CP%NonLinearModel%Min_kh_nonlinear) then
             !Interpolate non-linear scaling in conformal time
             !Do not use an associate for scaling. It does not work.
@@ -1280,6 +1284,7 @@
                     +(b0**3-b0)*ddscaling(tf_hi))*ho**2/6
 
                 ScaledSrc(ik,3:,i) = ScaledSrc(ik,3:,i) * ascale
+                !write(*,*) 'ascale', ascale
             end  do
         end if
     end do
@@ -1422,28 +1427,29 @@
 
     !     Interpolating the source as a function of time for the present
     !     wavelength.
+
     step=2
     do i=2, State%TimeSteps%npoints
         xf=IV%q*(State%tau0-State%TimeSteps%points(i))
-     !   if (CP%WantTensors) then
-      !      if (IV%q*State%TimeSteps%points(i) < max_etak_tensor.and. xf > 1.e-8_dl) then
-       !         step=i
-        !        IV%Source_q(i,:) =a0*scaledSrc(klo,:,i)+&
-         !           b0*scaledSrc(khi,:,i)+(a03 *ddScaledSrc(klo,:,i)+ &
-          !          b03*ddScaledSrc(khi,:,i)) *ho2o6
-           ! else
-            !    IV%Source_q(i,:) = 0
-           ! end if
-        !end if
-        !if (CP%WantVectors) then
-         !   if (IV%q*State%TimeSteps%points(i) < max_etak_vector.and. xf > 1.e-8_dl) then
-          !      step=i
-           !     IV%Source_q(i,:) =a0*ScaledSrc(klo,:,i) + b0*ScaledSrc(khi,:,i)+(a03 *ddScaledSrc(klo,:,i)+ &
-            !        b03*ddScaledSrc(khi,:,i)) *ho2o6
-            !else
-             !   IV%Source_q(i,:) = 0
-            !end if
-        !end if
+        if (CP%WantTensors) then
+            if (IV%q*State%TimeSteps%points(i) < max_etak_tensor.and. xf > 1.e-8_dl) then
+                step=i
+                IV%Source_q(i,:) =a0*scaledSrc(klo,:,i)+&
+                    b0*scaledSrc(khi,:,i)+(a03 *ddScaledSrc(klo,:,i)+ &
+                    b03*ddScaledSrc(khi,:,i)) *ho2o6
+            else
+                IV%Source_q(i,:) = 0
+            end if
+        end if
+        if (CP%WantVectors) then
+            if (IV%q*State%TimeSteps%points(i) < max_etak_vector.and. xf > 1.e-8_dl) then
+                step=i
+                IV%Source_q(i,:) =a0*ScaledSrc(klo,:,i) + b0*ScaledSrc(khi,:,i)+(a03 *ddScaledSrc(klo,:,i)+ &
+                    b03*ddScaledSrc(khi,:,i)) *ho2o6
+            else
+                IV%Source_q(i,:) = 0
+            end if
+        end if
 
         if (CP%WantScalars) then
             if ((DebugEvolution .or. WantLateTime .or. IV%q*State%TimeSteps%points(i) < max_etak_scalar) &
@@ -1451,6 +1457,10 @@
                 step=i
                 IV%Source_q(i,:) = a0 * ScaledSrc(klo,:,i) +  b0 * ScaledSrc(khi,:,i) + (a03*ddScaledSrc(klo,:,i) + &
                     b03 * ddScaledSrc(khi,:,i)) * ho2o6
+                    !if (i == 2) then
+                    !write(*,*) 'args', a0, ScaledSrc(klo,12,2), b0, ScaledSrc(khi,12,2), a03, ddScaledSrc(klo,12,2), &
+                    !a03, ddScaledSrc(klo,12,2), b03, ddScaledSrc(khi,12,2), ho2o6
+                    !end if
             else
                 IV%Source_q(i,:) = 0
             end if
@@ -1475,7 +1485,7 @@
     !a(klo,4) = sum(ScaledSrc(klo,4,:))
     !b = sum(:,4)
 
-    !write(*,*) 'klo', sum(ScaledSrc(klo,4,:))
+    !write(*,*) 'IV Source', IV%Source_q(2,12)
 
     end subroutine
 
@@ -1646,6 +1656,10 @@
                         sums(2) = sums(2) + IV%Source_q(n,2)*J_l
                         sums(3) = sums(3) + IV%Source_q(n,3)*J_l
                         sums(4:ThisSources%SourceNum) = sums(4:ThisSources%SourceNum) + IV%Source_q(n,4:ThisSources%SourceNum)*J_l
+                        !if (n == 2) then
+                        !if ((j == 57) .and. (IV%q_ix == 1986) .and. (n == 2)) then
+                            !write(*,*) 'IV Source:', n, IV%Source_q(n,12),J_l
+                        !end if
                     end do
                     !if ((j == 1) .and. (IV%q_ix == 1)) then
                     !    write(*,*) 'HERE1', sum(IV%Source_q(:, 4)), J_l
@@ -1742,9 +1756,11 @@
 
         ThisCT%Delta_p_l_k(:,j,IV%q_ix) = ThisCT%Delta_p_l_k(:,j,IV%q_ix) + sums
     
-        if ((j == 1) .and. (IV%q_ix == 1)) then
-        !write(*,*) 'summar :', sums(4)
-        end if
+        !if ((j == 57) .and. (IV%q_ix == 686)) then
+
+        !if ((j == 57) .and. (IV%q_ix == 1986)) then
+        !    write(*,*) 'sum :', ThisCT%Delta_p_l_k(12,j,IV%q_ix), sums(12), IV%q_ix
+        !end if
     end do
 
     !write(*,*) 'plk flat :', ThisCT%Delta_p_l_k(4,1,1)
@@ -2327,7 +2343,7 @@
     end subroutine GetInitPowerArrayTens
 
 
-     subroutine CalcScalCls(CTrans)
+    subroutine CalcScalCls(CTrans)
     use Bispectrum
     implicit none
     Type(ClTransferData) :: CTrans
@@ -2335,9 +2351,9 @@
     real(dl) apowers
     real(dl) dlnk, ell, ctnorm, dbletmp, Delta1, Delta2
     real(dl), allocatable :: ks(:), dlnks(:), pows(:)
-    real(dl) fac(3 + State%num_redshiftwindows + State%CP%CustomSources%num_custom_sources)
-    integer nscal, i
-
+    real(dl) fac(3 + State%num_redshiftwindows + State%CP%CustomSources%num_custom_sources + num_cmb_freq*2)
+    integer nscal, i, kays
+    
     allocate(ks(CTrans%q%npoints),dlnks(CTrans%q%npoints), pows(CTrans%q%npoints))
     do q_ix = 1, CTrans%q%npoints
         if (State%flat) then
@@ -2350,15 +2366,19 @@
         pows(q_ix) = CP%InitPower%ScalarPower(ks(q_ix))
         if (global_error_flag/=0) return
     end do
+    kays = 0
 
 #ifndef __INTEL_COMPILER
     !Can't use OpenMP here on ifort. Does not terminate.
     !$OMP PARALLEL DO DEFAULT(SHARED), SCHEDULE(STATIC,4), &
     !$OMP PRIVATE(ell,q_ix,dlnk,apowers,ctnorm,dbletmp,Delta1,Delta2,w_ix,w_ix2,fac, nscal, i)
 #endif
+
     do j=1,CTrans%ls%nl
         !Integrate dk/k Delta_l_q**2 * Power(k)
+        !write(*,*) 'j :', j
         ell = real(CTrans%ls%l(j),dl)
+        !ell = ell*8
         if (j<= CTrans%max_index_nonlimber) then
             do q_ix = 1, CTrans%q%npoints
                 if (.not.(State%closed.and.nint(CTrans%q%points(q_ix)*State%curvature_radius)<=CTrans%ls%l(j))) then
@@ -2370,57 +2390,29 @@
                         apowers*CTrans%Delta_p_l_k(1:2,j,q_ix)**2*dlnk
                     iCl_scalar(j,C_Cross) = iCl_scalar(j,C_Cross) + &
                         apowers*CTrans%Delta_p_l_k(1,j,q_ix)*CTrans%Delta_p_l_k(2,j,q_ix)*dlnk
-
                     if (CTrans%NumSources>2 .and. State%CP%want_cl_2D_array) then
-                        do w_ix=1,3 + State%num_redshiftwindows + num_cmb_freq*2
-                            Delta1 = CTrans%Delta_p_l_k(w_ix,j,q_ix)
-                            !if (w_ix>nscatter*2+1.and. w_ix2==3) then
-                                !if (w_ix>3) then
-                                 !   associate (Win => State%Redshift_w(w_ix - 3))
-                                  !      write(*,*) 'windkind : ', Win%kind
-                                   !     if (Win%kind == window_lensing) &
-                                    !        Delta1 = Delta1 / 2 * ell * (ell + 1)
-                                     !       write(*,*) 'HERE 0?', window_lensing
-                                      !  if (Win%kind == window_counts .and. CP%SourceTerms%counts_lensing) then
-                                            !want delta f/f - 2kappa;
-                                            ! grad^2 = -l(l+1);
-                                       !      write(*,*) 'HERE ?', Win%mag_index
-                                        !    Delta1 = Delta1 + ell * (ell + 1) * &
-                                         !       CTrans%Delta_p_l_k(3 + Win%mag_index + &
-                                          !      State%num_redshiftwindows, j, q_ix)
-                             !           end if
-                             !       end associate
-                             !   end if
-                            !end if
-                            do w_ix2=w_ix,3 + State%num_redshiftwindows + num_cmb_freq*2
-                                Delta2 = CTrans%Delta_p_l_k(w_ix2, j, q_ix)
-                                if (w_ix2>nscatter*2+1 .and. w_ix==3) then
-                                    if (w_ix>nscatter*2+1.and. w_ix2==3) then
-                                !if (w_ix2>nscatter*2+1 .or. w_ix2==3) then
-                                !if (w_ix2>= 3.and. w_ix>=3) then
-                                    !Skip if the auto or cross-correlation is included in direct Limber result
-                                    !Otherwise we need to include the sources e.g. to get counts-Temperature correct
-                                        if (CTrans%limber_l_min(w_ix2)/= 0 .and. j>=CTrans%limber_l_min(w_ix2) &
-                                            .and. CTrans%limber_l_min(w_ix)/= 0 .and. j>=CTrans%limber_l_min(w_ix)) cycle
-                                    end if
-                                end if
-                                Delta2 = CTrans%Delta_p_l_k(w_ix2, j, q_ix)
-                                !if (w_ix2 > 3) then
-                                !    associate (Win => State%Redshift_w(w_ix2 - 3))
-                                !        if (Win%kind == window_lensing) &
-                                !            Delta2 = Delta2 / 2 * ell * (ell + 1)
-                                !        if (Win%kind == window_counts .and. CP%SourceTerms%counts_lensing) then
-                                            !want delta f/f - 2kappa;
-                                            ! grad^2 = -l(l+1);
-                                !            Delta2 = Delta2 + ell * (ell + 1) * &
-                                !                CTrans%Delta_p_l_k(3 + Win%mag_index + &
-                                !                State%num_redshiftwindows, j, q_ix)
-                                !        end if
-                                !    end associate
-                                !end if
-                                iCl_Array(j,w_ix,w_ix2) = iCl_Array(j,w_ix,w_ix2)+Delta1*Delta2*apowers*dlnk
+    
+                        !ctnorm=sqrt((ell*ell-1)*(ell+2)*ell)
+                        !dbletmp=(ell*(ell+1))/OutputDenominator*const_fourpi*sqrt((ell+i)*(ell-i+1))
+                        !dbletmp=(CTrans%ls%l(j)*(CTrans%ls%l(j)+1))/OutputDenominator*const_fourpi
+
+                            do w_ix=1,3 + State%num_redshiftwindows + num_cmb_freq*2
+                                Delta1= CTrans%Delta_p_l_k(w_ix,j,q_ix)
+                                    do w_ix2=1,3 + State%num_redshiftwindows  + num_cmb_freq*2
+                                        if (w_ix>nscatter*2+1 .and. w_ix2==3) then
+                                            !if (w_ix == 2 .or. w_ix<=nscatter*2+1 .and. w_ix>3 .and. mod(w_ix-3,2)==0 ) Delta1=Delta1*ctnorm
+                                        if (w_ix2>nscatter*2+1 .or. w_ix2==3) then
+                                            if (CTrans%limber_l_min(w_ix2)/= 0 .and. j>=CTrans%limber_l_min(w_ix2) &
+                                        .and. CTrans%limber_l_min(w_ix)/= 0 .and. j>=CTrans%limber_l_min(w_ix)) cycle
+                                        end if
+                                        end if
+                                    Delta2 =  CTrans%Delta_p_l_k(w_ix2,j,q_ix)
+                                    !if (w_ix2 == 2 .or. w_ix2<=nscatter*2+1 .and. w_ix2>3 .and. mod(w_ix2-3,2)==0 ) &
+                                    !Delta2=Delta2*ctnorm
+                                    iCl_Array(j,w_ix,w_ix2) = iCl_Array(j,w_ix,w_ix2)+Delta1*Delta2*apowers*dlnk
+                                    !iCl_Array(j,w_ix,w_ix2) = iCl_Array(j,w_ix,w_ix2)+Delta1*Delta2*apowers*dlnk
+                                end do
                             end do
-                        end do
                         if (CP%CustomSources%num_custom_sources >0) then
                             do w_ix=1,3 + State%num_redshiftwindows + CP%CustomSources%num_custom_sources
                                 if (w_ix > 3 + State%num_redshiftwindows) then
@@ -2437,7 +2429,6 @@
                             end do
                         end if
                     end if
-
                     if (CTrans%NumSources>2 ) then
                         if (CP%SourceTerms%limber_phi_lmin==0 .or.  &
                             CTrans%limber_l_min(3)== 0 .or. j<CTrans%limber_l_min(3)) then
@@ -2455,47 +2446,51 @@
         end if !limber (j<= max_bessels_l_index)
 
         !Output l(l+1)C_l/OutputDenominator
-        ctnorm=(ell*ell-1)*(ell+2)*ell
-        dbletmp=(ell*(ell+1))/OutputDenominator*const_fourpi
-        if (State%CP%want_cl_2D_array) then
+            ctnorm=(ell*ell-1)*(ell+2)*ell
+            dbletmp=(ell*(ell+1))/OutputDenominator*const_fourpi
+            if (State%CP%want_cl_2D_array) then
             fac=1
             fac(2) = sqrt(ctnorm)
             if (CTrans%NumSources > 2) then
                 fac(3) = sqrt(ell*(ell+1)*CP%ALens) !Changed Dec18 for consistency
-                do w_ix=3 + State%num_redshiftwindows + 1,3 + State%num_redshiftwindows + CP%CustomSources%num_custom_sources
+                do w_ix=3 + State%num_redshiftwindows+1,3 + State%num_redshiftwindows + CP%CustomSources%num_custom_sources
+                    write(*,*) 'redshift w_ix', w_ix
                     !nscal= CP%CustomSources%custom_source_ell_scales(w_ix - State%num_redshiftwindows -3)
-                    do i=1, nscal
+                    !do i=1, nscal
                         fac(w_ix) = fac(w_ix)*(ell+i)*(ell-i+1)
-                    end do
+                    !end do
                     fac(w_ix) = sqrt(fac(w_ix))
                 end do
             end if
 
-            do w_ix=1, CTrans%NumSources - State%num_extra_redshiftwindows - num_cmb_freq*2
-                do w_ix2=w_ix,CTrans%NumSources - State%num_extra_redshiftwindows - num_cmb_freq*2
+            do w_ix=1, CTrans%NumSources - State%num_extra_redshiftwindows
+                do w_ix2=w_ix,CTrans%NumSources - State%num_extra_redshiftwindows
                     iCl_Array(j,w_ix,w_ix2) =iCl_Array(j,w_ix,w_ix2) &
                         *fac(w_ix)*fac(w_ix2)*dbletmp
                     iCl_Array(j,w_ix2,w_ix) = iCl_Array(j,w_ix,w_ix2)
                 end do
             end do
-        end if
+            end if
 
-        iCl_scalar(j,C_Temp)  =  iCl_scalar(j,C_Temp)*dbletmp
-        iCl_scalar(j,C_E) =  iCl_scalar(j,C_E)*dbletmp*ctnorm
-        iCl_scalar(j,C_Cross) =  iCl_scalar(j,C_Cross)*dbletmp*sqrt(ctnorm)
-        if (CTrans%NumSources>2) then
-            iCl_scalar(j,C_Phi) = CP%ALens*iCl_scalar(j,C_Phi)*const_fourpi*ell**4
-            !The lensing power spectrum computed is l^4 C_l^{\phi\phi}
-            !We put pix extra factors of l here to improve interpolation in l
-            iCl_scalar(j,C_PhiTemp) = sqrt(CP%ALens)*  iCl_scalar(j,C_PhiTemp)*const_fourpi*ell**3
-            !Cross-correlation is CTrans%ls%l^3 C_l^{\phi T}
-            iCl_scalar(j,C_PhiE) = sqrt(CP%ALens)*  iCl_scalar(j,C_PhiE)*const_fourpi*ell**3*sqrt(ctnorm)
-            !Cross-correlation is CTrans%ls%l^3 C_l^{\phi E}
-        end if
-    end do
+            iCl_scalar(j,C_Temp)  =  iCl_scalar(j,C_Temp)*dbletmp
+            iCl_scalar(j,C_E) =  iCl_scalar(j,C_E)*dbletmp*ctnorm
+            iCl_scalar(j,C_Cross) =  iCl_scalar(j,C_Cross)*dbletmp*sqrt(ctnorm)
+            if (CTrans%NumSources>2) then
+                iCl_scalar(j,C_Phi) = CP%ALens*iCl_scalar(j,C_Phi)*const_fourpi*ell**4
+                !The lensing power spectrum computed is l^4 C_l^{\phi\phi}
+                !We put pix extra factors of l here to improve interpolation in l
+                iCl_scalar(j,C_PhiTemp) = sqrt(CP%ALens)*  iCl_scalar(j,C_PhiTemp)*const_fourpi*ell**3
+                !Cross-correlation is CTrans%ls%l^3 C_l^{\phi T}
+                iCl_scalar(j,C_PhiE) = sqrt(CP%ALens)*  iCl_scalar(j,C_PhiE)*const_fourpi*ell**3*sqrt(ctnorm)
+                !Cross-correlation is CTrans%ls%l^3 C_l^{\phi E}
+            end if
+        end do
 #ifndef __INTEL_COMPILER
     !$OMP END PARALLEL DO
 #endif
+
+    write(*,*) 'calcScalcCls-end', iCl_array(1000,12,12)
+    !write(*,*) 'dbletmp', dbletmp
 
     end subroutine CalcScalCls
 
@@ -2709,6 +2704,7 @@
     !use verbose form above for gfortran consistency  [[1,3],[3,2]]
 
     !Note using log interpolation is worse
+
      if (CP%WantScalars) then
         do i = C_Temp, State%Scalar_C_last
             call CLData%CTransScal%ls%InterpolateClArrTemplated(iCl_scalar(1,i), &
@@ -2721,10 +2717,12 @@
                     if (i<3 .and. j<3) then
                         CLData%Cl_scalar_array(:,i,j) = CLData%Cl_scalar(:, ind(i,j))
                     !write(*,*) ' condi 1 i, j = ', i, j
-                    else
-                        if (i <= 3 + num_cmb_freq * 2 .and. &
-                            j <= 3 + num_cmb_freq * 2 .and. &
+                    else!
+                        if (i <= 3 + num_cmb_freq*2 .and. &
+                            j <= 3 + num_cmb_freq*2 .and. &
                             i > 3 .and. j > 3 .and. (i <= 5 .and. j <= 5 .or. .not. rayleigh_diff)) then
+                                !write(*,*) 'size2', size(iCl_array,1)
+                                !write(*,*) 'i, j : ', i, j
                             call CLData%CTransScal%ls%InterpolateClArrTemplated(iCl_array(1,i,j), &
                                  CLData%Cl_scalar_array(CLData%CTransScal%ls%lmin, i,j), &
                                  CLData%CTransScal%ls%nl, ind(1+mod(i-4,2), 1+mod(j-4,2)))
@@ -2737,9 +2735,12 @@
                     if (i/=j) CLData%Cl_scalar_array(:,j,i) = CLData%Cl_scalar_array(:,i,j)
                 end do
             end do
-            !write(*,*) 'goal : ', CLData%Cl_scalar_array(100,4,4)
         end if
     end if
+
+    write(*,*) 'cmb interpole', CLData%Cl_Scalar_Array(2,12,12)
+
+
     if (CP%WantVectors) then
         do i = C_Temp, CT_cross
             call CLData%CTransVec%ls%InterpolateClArr(iCl_vector(1,i), &

@@ -569,7 +569,8 @@
                 end do
                 !write(*,*) 'i, j , ind = : ', 4+ (f_i_1-2)*2,4+ (f_i_2-2)*2
                 !write(*,*) 'Cl_array = ', CLData%Cl_Scalar_Array(100,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)
-                !write(*,*) 'Cl_freq = ', CLData%Cl_lensed_freqs(100,CT_Cross,f_i_1-1,f_i_2-1)
+                !write(*,*) 'Cl_lensed_freq l 2000 2-2 : ', CLData%Cl_lensed_freqs(l,CT_Temp,2,2)
+                !write(*,*) 'sum(lens_contrib(CT_Temp,2000,:))*fac : ', sum(lens_contrib(CT_Temp,2000,:))*fac
             else
                 do l=lmin, CLout%lmax_lensed
                     !sign from d(cos theta) = -sin theta dtheta
@@ -594,6 +595,11 @@
         !write(*,*) 'CT_Cross : ', CLData%Cl_lensed_freqs(100,4,4,4)
         if (DebugMsgs) call Timer%WriteTime('Time for corr lensing')
     end associate
+       
+    !fac = 1000*(1000+1)/OutputDenominator*dtheta*const_twopi
+    !write(*,*) 'totalo args', sum(lens_contrib(CT_Temp,1000,:))*fac, CLData%Cl_Scalar_Array(1000,12,12)
+    !fac = 1000*(1000+1)/OutputDenominator*dtheta*const_twopi
+    !write(*,*) 'totalo args', sum(lens_contrib(CT_Temp,1000,:))*fac, CLData%Cl_Scalar_Array(1000,12,12)
 
     end subroutine CorrFuncFullSkyImpl
 
@@ -1161,7 +1167,6 @@
 
 
             !Interpolate contributions to sum and add up
-            write(*,*) 'w1 : ', CLData%Cl_scalar_array(100,4,4)
             call InterpolateClArr(CLData%CTransScal%ls, iContribs(1,CT_Temp), intcontrib, max_j_contribs)
             asum = sum(intcontrib(lmin:CLData%CTransScal%ls%l(max_j_contribs)))
             if (DoPol) then
@@ -1195,7 +1200,6 @@
         allocate(CLData%Cl_lensed(lmin:CLData%lmax_lensed,1:4))
 
         !Interpolate to get final spectrum
-        write(*,*) 'w2 : ', CLData%Cl_scalar_array(100,4,4)
         do j = CT_Temp, CT_Cross
             call CLData%CTransScal%ls%InterpolateClArr(iCl_lensed(1,j), &
                  CLData%Cl_lensed(lmin,i), max_lensed_ix)

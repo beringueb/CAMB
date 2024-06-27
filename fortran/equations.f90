@@ -1748,7 +1748,7 @@
     end do
     end subroutine output_window_sources
     ! andrea
-    subroutine output(EV, this, etat, CLdata, yin, j, tau,sources, num_custom_sources)
+    subroutine output(EV, this, etat, CLdata, yin, j, tau, sources, num_custom_sources)
     ! andrea
     Type(EvolutionVars) EV
     class(TThermoData) :: this
@@ -3138,11 +3138,11 @@
 
                 EV%OutputSources(s_ix+1) = ISW + doppler + monopole_source + quadrupole_source
                 ang_dist = f_K(tau0-tau)
-                if (EV%OutputSources(4) < -0.5) then
+                !if (EV%OutputSources(4) < -0.5) then
                     !write(*,*) 'ISW : ', ISW + doppler + monopole_source + quadrupole_source
                     !write(*,*) 'ISW', monopole_source, doppler, quadrupole_source
                     !write(*,*) 'visibility', visibility(f_i)
-                end if
+                !end if
                 if (tau < tau0) then
                     !E polarization source
                     EV%OutputSources(s_ix+2)=visibility(1)*polter*(15._dl/8._dl)/(ang_dist**2*k2)
@@ -3153,7 +3153,7 @@
                 !     EV%OutputSources(s_ix+1:s_ix+2)= EV%OutputSources(s_ix+1:s_ix+2) - EV%OutputSources(1:2)
                 !end if
 
-                s_ix=s_ix+2
+                s_ix = s_ix+2
             
                 if (size(EV%OutputSources) > 2 .and. f_i==1) then
                     ! and
@@ -3217,6 +3217,13 @@
             !write(*,*) 'EV%OutputSources(1)', EV%OutputSources(1)
             !write(*,*) 'EV%OutputSources(2)', EV%OutputSources(2)
             !write(*,*) 'EV%OutputSources(3)', EV%OutputSources(3)
+        !end if
+        !if (tau < 210) then
+        !write(*,*) EV%OutputSources(12)
+        !write(*,*) '1', ISW + doppler + monopole_source + quadrupole_source
+        !write(*,*) '2', visibility(1)*polter*(15._dl/8._dl)/(ang_dist**2*k2)
+        !write(*,*) '3', 2*phi*f_K(tau-State%tau_maxvis)/(f_K(tau0-State%tau_maxvis)*ang_dist)
+        !write(*,*) '1', visibility(:)
         !end if
         end if
     end if

@@ -1039,7 +1039,7 @@
                     do field1=1,nfields
                         do f1=1,nfields
                             call InterpolateClArr(SampleL,ifish_contribs(1,bispectrum_type,bispectrum_type2,field1,f1), &
-                                fish_contribs(lmin,field1,f1),lmaxcuti)  !SampleL%l0)
+                                fish_contribs(lmin,field1,f1), 1,1, lmaxcuti)  !SampleL%l0)
                         end do
                     end do
                     Fisher(bispectrum_type,bispectrum_type2)=0

@@ -1629,10 +1629,6 @@
 
     end function ddamping_da
 
-    !function test(this)
-    !class(CAMBdata) :: this
-    !end function test
-
 
     function noreion_doptdepth_dz(this,z)
     class(CAMBdata) :: this
@@ -2049,9 +2045,9 @@
         ho=lSet%l(lhi)-lSet%l(llo)
         a0=(lSet%l(lhi)-xi)/ho
         b0=(xi-lSet%l(llo))/ho
-
         all_Cl(il) = a0*iCl(llo)+ b0*iCl(lhi)+((a0**3-a0)* ddCl(llo) &
             +(b0**3-b0)*ddCl(lhi))*ho**2/6
+
     end do
 
     end subroutine InterpolateClArr
@@ -2064,6 +2060,7 @@
     integer, intent(in) :: max_ind
     integer, intent(in), optional :: template_index
     integer maxdelta, il
+    integer kays1, kays2
     real(dl) DeltaCL(lSet%nl)
     real(dl), allocatable :: tmpall(:)
 
@@ -2085,8 +2082,6 @@
             end do
     
             if (maxdelta < max_ind) then
-                write(*,*) 'here3', lSet%use_spline_template
-                !write(*,*) 'condition interne 2', (maxdelta < max_ind)
                 !directly interpolate high L where no t  emplate (doesn't effect lensing spectrum much anyway)
                 allocate(tmpall(lSet%lmin:lSet%l(max_ind)))
                 call InterpolateClArr(lSet, iCl, tmpall, max_ind)
@@ -2279,6 +2274,9 @@
     ! andrea
     real(dl), parameter :: nu_eff = 3101692._dl !3125349._dl is approx from Yu paper
     real(dl) num_cmb_freq_val
+    integer k1, k2
+    character(len=100) :: filename
+
 
     CP => State%CP
 
@@ -2346,6 +2344,7 @@
     nthermo = nint(thermal_history_def_timesteps*log(1.4e4/taumin)/log(1.4e4/2e-4)*background_boost)
     ! and
     this%tauminn=0.95d0*taumin
+    write(*,*) 'taumin : ', taumin
     this%dlntau=log(State%tau0/this%tauminn)/(nthermo-1)
 
     do RW_i = 1, State%num_redshiftwindows
@@ -2564,7 +2563,7 @@
     this%dotmu(1,2:)=0
     this%scaleFactor(1)=a0
     ! andrea
-
+    
     !$OMP PARALLEL DO DEFAULT(SHARED), SCHEDULE(STATIC,16)
     do i=2,nthermo
         call CP%Recomb%xe_tm(this%scaleFactor(i), xe_a(i), this%tb(i))
@@ -2641,12 +2640,33 @@
             freq_factors(f_i,1)/a2**2 + freq_factors(f_i,2)/a2**3  + freq_factors(f_i,3)/a2**4 ))
         end do
         ! andrea
-
         if (this%tight_tau==0 .and. 1/(tau*this%dotmu(i,1)) > 0.005) this%tight_tau = tau !0.005
-        !
         !Tight coupling switch time when k/opacity is smaller than 1/(tau*opacity)
     end do
+
     !write(*,*) 'tau SECOND INIT', taU
+    call dotmuSp%Init(taus(nthermo:1:-1), this%dotmu(nthermo:1:-1,1))
+    ! 
+    allocate(opts(nthermo))
+    call dotmuSp%IntegralArray(opts)
+    ! and solo change
+    sdotmu(:,1) = opts(nthermo:1:-1)
+    !sdotmu(1,2:) = 0
+
+    do i=1,nscatter
+        sdotmu(:,i) = opts(nthermo:1:-1)
+    end do
+
+    !do i=2,nthermo
+    !    tau =taus(i)
+    !    if (tau < 0.001) then
+            !sdotmu(i,2:)=0
+    !    else
+            !sdotmu(i,2:)= sdotmu(i-1,2:)+2._dl*dtau/(1._dl/this%dotmu(i,2:)+1._dl/this%dotmu(i-1,2:))
+            !write(*,*) 'i', i
+    !    end if
+        !Tight coupling switch time when k/opacity is smaller than 1/(tau*opacity)
+    !end do
 
     if (CP%Reion%Reionization .and. (this%xe(nthermo) < 0.999d0)) then
         write(*,*)'Warning: xe at redshift zero is < 1'
@@ -2654,15 +2674,85 @@
         write(*,*) 'function in the Reionization module'
     end if
 
+    filename = 'array.dat'
+
+    ! Open the file for writing
+    open(unit=10, file=filename, status='replace', action='write')
+
+    ! Write the array values to the file
+    ! Write the array values along with their row indices to the file
+    !do k1 = 1, nthermo
+    !    write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
+    !    do k2 = 1, nscatter
+    !        if (k2 < nscatter) then
+    !            write(10, '(F40.20, A)', advance='no') this%dotmu(k1, k2), CHAR(9) ! Write value followed by a tab
+    !        else
+    !            write(10, '(F40.20)') this%dotmu(k1, k2) ! Write last value in the row without a tab
+    !        end if
+    !    end do
+    !    write(10, *) ! End the line after each row
+    !end do
+
+    ! Close the file
+    close(10)
+
+    print *, 'Array values written to ', trim(filename)
+
     !Integrate for optical depth
     ! andrea solo change
-    call dotmuSp%Init(taus(nthermo:1:-1), this%dotmu(nthermo:1:-1,1))
-    ! 
-    allocate(opts(nthermo))
-    call dotmuSp%IntegralArray(opts)
+    !do f_i=1, nscatter
+    !    sdotmu(:,f_i) = opts(nthermo:1:-1)
+    !end do
+    !sdotmu(:,1) = 0
     ! and solo change
-    sdotmu(:,1) = opts(nthermo:1:-1)
-    ! and solo change
+    !sdotmu(2,2:)=0
+    !do i=2, nthermo
+    !write(*,*) 'i : ', i
+    !if (tau < 0.001) then
+            !sdotmu(i,1)=0
+    !    else
+            !sdotmu(i,1)=sdotmu(i-1,1)+2._dl*dtau/(1._dl/this%dotmu(i,1)+1._dl/this%dotmu(i-1,1))
+    !    end if
+    !    if (i < 8150) then
+        !if (tau < 0.001) then
+    !            sdotmu(i,2:)=0
+    !        else
+    !            sdotmu(i,2:)= sdotmu(i-1,2:)+2._dl*dtau/(1._dl/this%dotmu(i,2:)+1._dl/this%dotmu(i-1,2:))
+                !if (i == 40000) then
+                !    write(*,*) 'c quoi les bails', sdotmu(i-1,2), 2._dl*dtau/(1._dl/this%dotmu(i,2)), 1._dl/this%dotmu(i-1,2)
+                !end if
+    !            do f_i = 2, nscatter 
+    !                if ((this%dotmu(i-1,f_i) == 0) .or. (this%dotmu(i,f_i) == 0 )) then
+     !                   sdotmu(i,f_i) = 0
+     !               end if
+     !               if (i == 40000) then
+                        !write(*,*) 'sdotmu', 1._dl/this%dotmu(i,f_i), 1._dl/this%dotmu(i-1,f_i)
+      !              end if
+      !          end do
+
+                !sdotmu(i,2:)= sdotmu(i-1,2:)+2._dl*dtau/(1._dl/this%dotmu(i,2:)+1._dl/this%dotmu(i-1,2:))
+                !if (sdotmu(i,f_i) == 0) then
+                    !write(*,*) 'args', this%dotmu(i-1,2), i
+                    !write(*,*) 'condition', (tau < 0.001)
+                !end if
+       ! end if
+    !end do
+
+    ! test
+    !do i = 2, nthermo
+        !write(*,*) 'i : ', i
+    !    do f_i = 2, nscatter
+    !        if (this%dotmu(i-1,f_i) == 0) then
+    !            write(*,*) 'sdotmu', sdotmu(i-1, f_i)
+                !write(*,*) 'sdotmu1'
+    !        end if
+            !if (this%dotmu(i-1,f_i) == 0) then
+            !    write(*,*) 'here 2', i, f_i
+            !end if
+    !    end do
+    !end do
+    !write(*,*) 'sdot 2-2 : ' , sdotmu(2,2)
+
     do j1=1,nthermo
         ! andrea change
         if (sdotmu(j1,1)< -69) then
@@ -2676,6 +2766,7 @@
             end if
         end if
     end do
+
     z_scale =  COBE_CMBTemp/CP%TCMB
     zstar_min = 700._dl * z_scale
     zstar_max = 2000._dl * z_scale
@@ -2815,7 +2906,34 @@
         call splder(this%ddotmu(1,f_i),this%dddotmu(1,f_i),nthermo,spline_data)
         call splder(this%dddotmu(1,f_i),this%ddddotmu(1,f_i),nthermo,spline_data)
         call splder(this%emmu(1,f_i),this%demmu(1,f_i),nthermo,spline_data)
+        !write(*,*) 'this emmu', this%emmu(1,f_i)
+        !write(*,*) 'here'
     end do
+
+    !filename = 'array.dat'
+
+    ! Open the file for writing
+    !open(unit=10, file=filename, status='replace', action='write')
+
+    ! Write the array values to the file
+    ! Write the array values along with their row indices to the file
+    !do k1 = 1, nthermo
+    !    write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
+    !    do k2 = 1, nscatter
+    !        if (k2 < nscatter) then
+    !            write(10, '(F30.16, A)', advance='no') this%emmu(k1, k2), CHAR(9) ! Write value followed by a tab
+    !        else
+    !            write(10, '(F30.16)') this%emmu(k1, k2) ! Write last value in the row without a tab
+    !        end if
+    !    end do
+    !    write(10, *) ! End the line after each row
+    !end do
+
+    ! Close the file
+    !close(10)
+
+    !print *, 'Array values written to ', trim(filename)
+
     ! 
     if (CP%want_zstar .or. CP%WantDerivedParameters) &
         this%z_star = State%binary_search(noreion_optdepth, 1.d0, zstar_min, zstar_max, &
@@ -3435,12 +3553,13 @@
     d=log(tau/this%tauminn)/this%dlntau+1._dl
     i=int(d)
     d=d-i
+    !write(*,*) 'i', i
+
     ! andrea
     do scat = 1, nscatter
     ! 
         if (i < this%nthermo) then
             ! andrea change
-            write(*,*) 'emmu', this%emmu(i, scat)
             ddopacity(scat) = (this%dddotmu(i, scat) + d * (this%ddddotmu(i, scat) + d * (3.0_dl * (this%dddotmu(i + 1, scat) &
                 - this%dddotmu(i, scat)) - 2.0_dl * this%ddddotmu(i, scat) - this%ddddotmu(i + 1, scat) &
                 + d * (this%ddddotmu(i, scat) + this%ddddotmu(i + 1, scat) + 2.0_dl * (this%dddotmu(i, scat) &
@@ -3456,19 +3575,15 @@
                     +2._dl*(this%winlens(i)-this%winlens(i+1)))))
             end if
             vis(scat)= opacity(scat)*exptau(scat)
-            !if (vis(scat)  > 0.2) then
-            !    write(*,*) 'args1', exptau(scat), opacity(scat)
-            !end if 
             dvis(scat)=exptau(scat)*(opacity(scat)**2+dopacity(scat))
             ddvis(scat)=exptau(scat)*(opacity(scat)**3+3*opacity(scat)*dopacity(scat)+ddopacity(scat))
         else
             ! andrea solo change
+            opacity(scat)=this%dotmu(this%nthermo,scat)
+            dopacity(scat)=this%ddotmu(this%nthermo,scat)
             ddopacity(scat)=this%dddotmu(this%nthermo,scat)
             exptau(scat)=this%emmu(this%nthermo,scat)
             vis(scat)=opacity(scat)*exptau(scat)
-            !if (vis(scat)  > 0.2) then
-            !    write(*,*) 'args2', exptau(scat), opacity(scat)
-            !end if 
             dvis(scat)=exptau(scat)*(opacity(scat)**2+dopacity(scat))
             ddvis(scat)=exptau(scat)*(opacity(scat)**3+3._dl*opacity(scat)*dopacity(scat)+ddopacity(scat))
             ! 
@@ -3476,14 +3591,6 @@
     ! 
     end do
 
-    !do kays = 1, nscatter
-    !    if (vis(kays)  > 0.2) then
-    !        write(*,*) 'vis recfast : ', vis(kays), kays
-            !        write(*,*) 'visibility(kays) : ', visibility(kays)
-    !    end if
-    !end do
-
-    !write(*,*) 'vis zero', vis(1)
     end subroutine IonizationFunctionsAtTime
 
     subroutine Init_ClTransfer(CTrans)
@@ -3625,9 +3732,9 @@
     real(dl) :: fact
     integer :: last_C, il, i, j, unit
     real(dl), allocatable :: outarr(:,:)
-    character(LEN=name_tag_len) :: cov_names((3+State%num_redshiftwindows)**2)
+    character(LEN=name_tag_len) :: cov_names((3+State%num_redshiftwindows+num_cmb_freq*2)**2)
     Type(CAMBParams), pointer :: CP
-    integer lmin
+    integer lmin, nsource_out
     integer f_i_1,f_i_2
 
     CP=> State%CP
@@ -3652,26 +3759,31 @@
     end if
 
     if (CP%WantScalars .and. CP%want_cl_2D_array .and. ScalCovFile /= '' .and. this%CTransScal%NumSources>2) then
-        allocate(outarr(1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows))
+        nsource_out = 3+State%num_redshiftwindows+num_cmb_freq*2
+        allocate(outarr(1:nsource_out,1:nsource_out))
 
-        do i=1, 3+State%num_redshiftwindows
-            do j=1, 3+State%num_redshiftwindows
-                cov_names(j + (i-1)*(3+State%num_redshiftwindows)) = trim(scalar_fieldname(i))//'x'//trim(scalar_fieldname(j))
+        do i=1, nsource_out
+            do j=1, nsource_out
+                cov_names(j + (i-1)*(nsource_out)) = trim(scalar_fieldname(i))//'x'//trim(scalar_fieldname(j))
             end do
         end do
         unit = open_file_header(ScalCovFile, 'L', cov_names)
 
         do il=lmin,min(10000,CP%Max_l)
-            outarr=this%Cl_scalar_array(il,1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows)
+            outarr=this%Cl_scalar_array(il,1:nsource_out,1:nsource_out)
             outarr(1:2,:)=sqrt(fact)*outarr(1:2,:)
             outarr(:,1:2)=sqrt(fact)*outarr(:,1:2)
-            write(unit,trim(numcat('(1I6,',(3+State%num_redshiftwindows)**2))//'E15.6)') il, real(outarr)
+            outarr(:,4:3+num_cmb_freq*2)=sqrt(fact)*outarr(:,4:3+num_cmb_freq*2)
+            outarr(4:3+num_cmb_freq*2,:)=sqrt(fact)*outarr(4:3+num_cmb_freq*2,:)
+            write(unit,trim(numcat('(1I6,',(nsource_out)**2))//'E15.6)') il, real(outarr)
         end do
         do il=10100,CP%Max_l, 100
-            outarr=this%Cl_scalar_array(il,1:3+State%num_redshiftwindows,1:3+State%num_redshiftwindows)
+            outarr=this%Cl_scalar_array(il,1:nsource_out,1:nsource_out)
             outarr(1:2,:)=sqrt(fact)*outarr(1:2,:)
             outarr(:,1:2)=sqrt(fact)*outarr(:,1:2)
-            write(unit,trim(numcat('(1E15.5,',(3+State%num_redshiftwindows)**2))//'E15.6)') real(il), real(outarr)
+            outarr(:,4:3+num_cmb_freq*2)=sqrt(fact)*outarr(:,4:3+num_cmb_freq*2)
+            outarr(4:3+num_cmb_freq*2,:)=sqrt(fact)*outarr(4:3+num_cmb_freq*2,:)
+            write(unit,trim(numcat('(1E15.5,',(nsource_out)**2))//'E15.6)') real(il), real(outarr)
         end do
         close(unit)
         deallocate(outarr)
@@ -3696,7 +3808,7 @@
         end do
         close(unit)
     end if
-    write(*,*) 'this%Cl_lensed_freqs', this%Cl_lensed_freqs(100,4,4,4)
+    !write(*,*) 'this%Cl_lensed_freqs', this%Cl_lensed_freqs(100,4,4,4)
     
     if (CP%WantScalars .and. CP%DoLensing .and. LensFile /= '') then
         unit = open_file_header(LensFile, 'L', CT_name_tags)
@@ -3720,6 +3832,9 @@
         end if
     end if
 
+    !write(*,*) 'results', fact*this%Cl_lensed_freqs(:, CT_Temp:CT_Cross,6,6)
+    !write(*,*) 'totalo', fact*this%Cl_lensed_freqs(1000, CT_Temp,6,6)
+    !write(*,*) 't arg', this%Cl_lensed_freqs(1000, CT_Temp,6,6)
 
     if (CP%WantScalars .and. CP%WantTensors .and. CP%DoLensing .and. LensTotFile /= '') then
         unit = open_file_header(LensTotFile, 'L', CT_name_tags)
