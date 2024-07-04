@@ -376,7 +376,7 @@
     integer, parameter :: num_cmb_freq = 6!!!
     logical :: rayleigh_diff = .false.
     logical :: rayleigh_pows(3) = [.true.,.true.,.true.]
-    logical :: rayleigh_back_approx = .false.
+    logical :: rayleigh_back_approx = .true.
     integer, parameter :: nscatter = num_cmb_freq+1
     real(dl) :: phot_freqs(num_cmb_freq)  !set in equations _Init
     real(dl) :: phot_int_kernel(num_cmb_freq)
@@ -673,7 +673,6 @@
     d=d-i
     if (i < 1) then
         !Linear interpolation if out of bounds (should not occur).
-        write(*,*) 'Thermo_values : tau, taumin = ', tau, this%tauminn
         call MpiStop('thermo out of bounds')
     else if (i >= this%nthermo) then
         cs2b=this%cs2(this%nthermo)
@@ -1031,24 +1030,24 @@
     real(dl) zst,z,az,bz,Recombination_rayleigh_eff
     integer ilo,ihi
     z=1/a-1
-    associate(Calc => this%Calc)
-    if (z.ge.Calc%zrec(1)) then
+    !associate(Calc => this%Calc)
+    if (z.ge.this%Calc%zrec(1)) then
         !break Recombination_rayleigh_eff
-        Recombination_rayleigh_eff=Calc%x_rayleigh_eff(1)
+        Recombination_rayleigh_eff=this%Calc%x_rayleigh_eff(1)
     else
-        if (z.le.Calc%zrec(nz)) then
-            Recombination_rayleigh_eff=Calc%x_rayleigh_eff(nz)
+        if (z.le.this%Calc%zrec(nz)) then
+            Recombination_rayleigh_eff=this%Calc%x_rayleigh_eff(nz)
         else
             zst=(zinitial-z)/delta_z
             ihi= int(zst)
             ilo = ihi+1
             az=zst - int(zst)
             bz=1-az     
-            Recombination_rayleigh_eff=az*Calc%x_rayleigh_eff(ilo)+bz*Calc%x_rayleigh_eff(ihi)+ &
-            ((az**3-az)*Calc%dx_rayleigh_eff(ilo)+(bz**3-bz)*Calc%dx_rayleigh_eff(ihi))/6._dl
+            Recombination_rayleigh_eff=az*this%Calc%x_rayleigh_eff(ilo)+bz*this%Calc%x_rayleigh_eff(ihi)+ &
+            ((az**3-az)*this%Calc%dx_rayleigh_eff(ilo)+(bz**3-bz)*this%Calc%dx_rayleigh_eff(ihi))/6._dl
         endif
     endif
-    end associate
+    !end associate
     end function Recombination_rayleigh_eff
 
     function total_scattering_eff(this, State, a)
@@ -1057,7 +1056,6 @@
     real(dl), intent(in) :: a
     real(dl) :: a2, total_scattering_eff
 
-    associate(Calc => this%Calc)
         if (rayleigh_back_approx) then
             a2 = a**2
             total_scattering_eff = this%x_e(a) + this%recombination_rayleigh_eff(a) * ( &
@@ -1065,7 +1063,6 @@
         else
             total_scattering_eff = State%CP%Recomb%x_e(a)
         end if
-    end associate
     end function total_scattering_eff
     ! andrea
 
@@ -2115,22 +2112,23 @@
         d=log(tau/this%tauminn)/this%dlntau+1._dl
         i=int(d)
         d=d-i
+
         if (i < 1) then
             !Linear interpolation if out of bounds (should not occur).
             call MpiStop('thermo out of bounds')
         else if (i >= this%nthermo) then
             cs2b=this%cs2(this%nthermo)
-            opacity=this%dotmu(this%nthermo,:)
+            opacity(:)=this%dotmu(this%nthermo,:)
             a=1
             if (present(dopacity)) then
-                dopacity = this%ddotmu(this%nthermo,:)/(tau*this%dlntau)
+                dopacity(:) = this%ddotmu(this%nthermo,:)/(tau*this%dlntau)
             end if
         ! andrea
         else
             cs2b=this%cs2(i)+d*(this%dcs2(i)+d*(3*(this%cs2(i+1)-this%cs2(i))  &
                 -2*this%dcs2(i)-this%dcs2(i+1)+d*(this%dcs2(i)+this%dcs2(i+1)  &
                 +2*(this%cs2(i)-this%cs2(i+1)))))
-            opacity=this%dotmu(i,:)+d*(this%ddotmu(i,:)+d*(3*(this%dotmu(i+1,:)-this%dotmu(i,:)) &
+            opacity(:)=this%dotmu(i,:)+d*(this%ddotmu(i,:)+d*(3*(this%dotmu(i+1,:)-this%dotmu(i,:)) &
                 -2*this%ddotmu(i,:)-this%ddotmu(i+1,:)+d*(this%ddotmu(i,:)+this%ddotmu(i+1,:) &
                 +2*(this%dotmu(i,:)-this%dotmu(i+1,:)))))
             a = (this%ScaleFactor(i)+d*(this%dScaleFactor(i)+d*(3*(this%ScaleFactor(i+1)-this%ScaleFactor(i)) &
@@ -2276,14 +2274,15 @@
     real(dl) num_cmb_freq_val
     integer k1, k2
     character(len=100) :: filename
+    integer j
 
 
     CP => State%CP
 
     if (num_cmb_freq<10) then
         phot_freqs(1:6) = [0, 143, 217,353, 545, 857]
-        !phot_freqs = 0
-!       phot_freqs(1:8) = [220,265,300,320,295,460,555,660]*1.085 !Prism
+
+        !             phot_freqs(1:8) = [220,265,300,320,295,460,555,660]*1.085 !Prism
         do i=1, size(phot_freqs)
             q = phot_freqs(i)/56.8
             !this should not be used, just for code consistency
@@ -2294,24 +2293,15 @@
             else
                 dq = (phot_freqs(i+1)-phot_freqs(i-1))/2/56.8
             end if
-            ! andrea
             if (q==0._dl) then
                 phot_int_kernel(i)=0
             else
-            ! andrea
                 dlfdlq=-q/(1._dl-exp(-q))
                 phot_int_kernel(i)=dq*q**3/(exp(q)-1._dl) * (-0.25_dl*dlfdlq)
             end if
         end do
     else
-        num_cmb_freq_val = real(num_cmb_freq)
-        if (num_cmb_freq_val == 0) then
-            dq = 1
-        else
-            dq = 18/num_cmb_freq_val
-        end if
-        !dq = 18/real(num_cmb_freq)
-        ! and fix
+        dq = 18/real(num_cmb_freq)
         do i=1,num_cmb_freq
             q=(i-0.5d0)*dq
             phot_freqs(i) = 56.8*q !phot_freqs in GHz
@@ -2344,7 +2334,6 @@
     nthermo = nint(thermal_history_def_timesteps*log(1.4e4/taumin)/log(1.4e4/2e-4)*background_boost)
     ! and
     this%tauminn=0.95d0*taumin
-    write(*,*) 'taumin : ', taumin
     this%dlntau=log(State%tau0/this%tauminn)/(nthermo-1)
 
     do RW_i = 1, State%num_redshiftwindows
@@ -2409,7 +2398,6 @@
     !$OMP SECTION
     !call etat%Init(State,WantTSpin=CP%Do21cm) 
     call CP%Recomb%Init(State,WantTSpin=CP%Do21cm)    !almost all the time spent here
-    write(*,*) 'ok'
     if (CP%Evolve_delta_xe) this%recombination_saha_tau  = State%TimeOfZ(CP%Recomb%get_saha_z(), tol=1e-4_dl)
     if (CP%Evolve_baryon_cs .or. CP%Evolve_delta_xe .or. CP%Evolve_delta_Ts .or. CP%Do21cm) &
         this%recombination_Tgas_tau = State%TimeOfz(1/CP%Recomb%min_a_evolve_Tm-1, tol=1e-4_dl)
@@ -2536,7 +2524,6 @@
         end if
         tau01 =tau
     end do
-    !write(*,*) 'tau FIRST INIT = ', tau
     do RW_i = 1, State%num_redshiftwindows
         associate(Win => RW(RW_i))
             if (State%Redshift_w(RW_i)%kind == window_lensing .or. &
@@ -2600,7 +2587,6 @@
             this%xe(i) = CP%Reion%x_e(1/a-1, tau, this%xe(ncount))
             if (CP%Accuracy%AccurateReionization .and. CP%WantDerivedParameters) then
                 ! and
-                !this%dotmu(i,1)=(etat%total_scattering_eff(a) - this%xe(i))*State%akthom/a2
                 this%dotmu(i,1) = (etat%total_scattering_eff(State, a) - this%xe(i)) * State%akthom / a2
 
                 ! and
@@ -2635,36 +2621,31 @@
         end if
         !if (.not. allocated(statee%Calc)) allocate(statee%Calc)
         !Calc => Statee%Calc
+
         do f_i=1,num_cmb_freq
             this%dotmu(i,1+f_i)=this%dotmu(i,1)*elec_fac + etat%recombination_rayleigh_eff(a)*State%akthom/a2*(min(1._dl,&
             freq_factors(f_i,1)/a2**2 + freq_factors(f_i,2)/a2**3  + freq_factors(f_i,3)/a2**4 ))
-        end do
+
+        end do         
+
         ! andrea
         if (this%tight_tau==0 .and. 1/(tau*this%dotmu(i,1)) > 0.005) this%tight_tau = tau !0.005
         !Tight coupling switch time when k/opacity is smaller than 1/(tau*opacity)
     end do
 
-    !write(*,*) 'tau SECOND INIT', taU
+    do i=1,nscatter
+        call dotmuSp%Init(taus(nthermo:1:-1), this%dotmu(nthermo:1:-1,i))
+        allocate(opts(nthermo))
+        call dotmuSp%IntegralArray(opts)
+        sdotmu(:,i) = opts(nthermo:1:-1)
+        deallocate(opts)
+    end do
+
     call dotmuSp%Init(taus(nthermo:1:-1), this%dotmu(nthermo:1:-1,1))
     ! 
     allocate(opts(nthermo))
     call dotmuSp%IntegralArray(opts)
-    ! and solo change
-    sdotmu(:,1) = opts(nthermo:1:-1)
-    !sdotmu(1,2:) = 0
 
-    do i=1,nscatter
-        sdotmu(:,i) = opts(nthermo:1:-1)
-    end do
-
-    !do i=2,nthermo
-    !    tau =taus(i)
-    !    if (tau < 0.001) then
-            !sdotmu(i,2:)=0
-    !    else
-            !sdotmu(i,2:)= sdotmu(i-1,2:)+2._dl*dtau/(1._dl/this%dotmu(i,2:)+1._dl/this%dotmu(i-1,2:))
-            !write(*,*) 'i', i
-    !    end if
         !Tight coupling switch time when k/opacity is smaller than 1/(tau*opacity)
     !end do
 
@@ -2677,7 +2658,7 @@
     filename = 'array.dat'
 
     ! Open the file for writing
-    open(unit=10, file=filename, status='replace', action='write')
+    !open(unit=10, file=filename, status='replace', action='write')
 
     ! Write the array values to the file
     ! Write the array values along with their row indices to the file
@@ -2685,73 +2666,20 @@
     !    write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
     !    do k2 = 1, nscatter
     !        if (k2 < nscatter) then
-    !            write(10, '(F40.20, A)', advance='no') this%dotmu(k1, k2), CHAR(9) ! Write value followed by a tab
+    !            write(10, '(F40.20, A)', advance='no') sdotmu(k1,2), CHAR(9) ! Write value followed by a tab
     !        else
-    !            write(10, '(F40.20)') this%dotmu(k1, k2) ! Write last value in the row without a tab
+                !write(10, '(F40.20)') opts(k1) ! Write last value in the row without a tab
     !        end if
     !    end do
     !    write(10, *) ! End the line after each row
     !end do
 
     ! Close the file
-    close(10)
+    !close(10)
 
-    print *, 'Array values written to ', trim(filename)
+    !print *, 'Array values written to ', trim(filename)
 
     !Integrate for optical depth
-    ! andrea solo change
-    !do f_i=1, nscatter
-    !    sdotmu(:,f_i) = opts(nthermo:1:-1)
-    !end do
-    !sdotmu(:,1) = 0
-    ! and solo change
-    !sdotmu(2,2:)=0
-    !do i=2, nthermo
-    !write(*,*) 'i : ', i
-    !if (tau < 0.001) then
-            !sdotmu(i,1)=0
-    !    else
-            !sdotmu(i,1)=sdotmu(i-1,1)+2._dl*dtau/(1._dl/this%dotmu(i,1)+1._dl/this%dotmu(i-1,1))
-    !    end if
-    !    if (i < 8150) then
-        !if (tau < 0.001) then
-    !            sdotmu(i,2:)=0
-    !        else
-    !            sdotmu(i,2:)= sdotmu(i-1,2:)+2._dl*dtau/(1._dl/this%dotmu(i,2:)+1._dl/this%dotmu(i-1,2:))
-                !if (i == 40000) then
-                !    write(*,*) 'c quoi les bails', sdotmu(i-1,2), 2._dl*dtau/(1._dl/this%dotmu(i,2)), 1._dl/this%dotmu(i-1,2)
-                !end if
-    !            do f_i = 2, nscatter 
-    !                if ((this%dotmu(i-1,f_i) == 0) .or. (this%dotmu(i,f_i) == 0 )) then
-     !                   sdotmu(i,f_i) = 0
-     !               end if
-     !               if (i == 40000) then
-                        !write(*,*) 'sdotmu', 1._dl/this%dotmu(i,f_i), 1._dl/this%dotmu(i-1,f_i)
-      !              end if
-      !          end do
-
-                !sdotmu(i,2:)= sdotmu(i-1,2:)+2._dl*dtau/(1._dl/this%dotmu(i,2:)+1._dl/this%dotmu(i-1,2:))
-                !if (sdotmu(i,f_i) == 0) then
-                    !write(*,*) 'args', this%dotmu(i-1,2), i
-                    !write(*,*) 'condition', (tau < 0.001)
-                !end if
-       ! end if
-    !end do
-
-    ! test
-    !do i = 2, nthermo
-        !write(*,*) 'i : ', i
-    !    do f_i = 2, nscatter
-    !        if (this%dotmu(i-1,f_i) == 0) then
-    !            write(*,*) 'sdotmu', sdotmu(i-1, f_i)
-                !write(*,*) 'sdotmu1'
-    !        end if
-            !if (this%dotmu(i-1,f_i) == 0) then
-            !    write(*,*) 'here 2', i, f_i
-            !end if
-    !    end do
-    !end do
-    !write(*,*) 'sdot 2-2 : ' , sdotmu(2,2)
 
     do j1=1,nthermo
         ! andrea change
@@ -2802,23 +2730,6 @@
         write(*,'("Reion opt depth      = ",f7.4)') this%actual_opt_depth
     end if
 
-    ! andrea
-    !if (plot_scatter) then
-     !   call CreateTxtFile('c:\tmp\planck\rayleigh\fixed\visibilities_tot.txt',1)
-      !      do j1=1,nthermo !!!!
-               ! tau = this%tauminn*exp((j1-1)*dlntau)
-       !      write(1,'(9E15.5)') tau, scaleFactor(j1), this%dotmu(j1,1)*scaleFactor(j1)**2/State%akthom, real(this%emmu(j1,1)*this%dotmu(j1,1)),real(this%emmu(j1,3:7)*this%emmu(j1,1)*this%dotmu(j1,3:7))
-        ! end do
-         !close(1)
-         !call CreateTxtFile('c:\tmp\planck\rayleigh\fixed\taudot_tot.txt',1)
-         !do j1=1,nthermo !!!!
-         !    tau = this%tauminn*exp((j1-1)*dlntau)
-         !    write(1,'(14E15.5)') tau, scaleFactor(j1), this%dotmu(j1,1)*scaleFactor(j1)**2/State%akthom,                               real(this%dotmu(j1,1)),real(this%dotmu(j1,3:7)),real(this%emmu(j1,3:7))
-         !end do
-         !close(1)
-         !stop
-     !end if
-     !andrea
 
     iv=0
     vfi=0._dl
@@ -2855,7 +2766,6 @@
             end if
         end if
     end do
-    !write(*,*) 'tau 3 INIT', taU
 
     if (iv /= 2) then
         call GlobalError('ThemoData Init: failed to find end of recombination',error_reionization)
@@ -2882,7 +2792,7 @@
             this%winlens(j1)= awin_lens1p/(State%tau0-tau) - awin_lens2p
         end do
     end if
-    !write(*,*) 'tau DOWINLENS', taU
+
     ! Calculating the timesteps during recombination.
 
     if (CP%WantTensors) then
@@ -2906,34 +2816,7 @@
         call splder(this%ddotmu(1,f_i),this%dddotmu(1,f_i),nthermo,spline_data)
         call splder(this%dddotmu(1,f_i),this%ddddotmu(1,f_i),nthermo,spline_data)
         call splder(this%emmu(1,f_i),this%demmu(1,f_i),nthermo,spline_data)
-        !write(*,*) 'this emmu', this%emmu(1,f_i)
-        !write(*,*) 'here'
     end do
-
-    !filename = 'array.dat'
-
-    ! Open the file for writing
-    !open(unit=10, file=filename, status='replace', action='write')
-
-    ! Write the array values to the file
-    ! Write the array values along with their row indices to the file
-    !do k1 = 1, nthermo
-    !    write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
-    !    do k2 = 1, nscatter
-    !        if (k2 < nscatter) then
-    !            write(10, '(F30.16, A)', advance='no') this%emmu(k1, k2), CHAR(9) ! Write value followed by a tab
-    !        else
-    !            write(10, '(F30.16)') this%emmu(k1, k2) ! Write last value in the row without a tab
-    !        end if
-    !    end do
-    !    write(10, *) ! End the line after each row
-    !end do
-
-    ! Close the file
-    !close(10)
-
-    !print *, 'Array values written to ', trim(filename)
-
     ! 
     if (CP%want_zstar .or. CP%WantDerivedParameters) &
         this%z_star = State%binary_search(noreion_optdepth, 1.d0, zstar_min, zstar_max, &
@@ -2959,6 +2842,7 @@
             end if
         end do
     end if
+
     call this%SetTimeSteps(State,State%TimeSteps)
     !$OMP END PARALLEL SECTIONS
 
@@ -3071,55 +2955,7 @@
 
     this%HasThermoData = .true.
 
-    ! Deallocate memory for Statee
-    ! deallocate(Statee)
-
-
-    write(*,*) 'zdrag', this%z_drag
     end subroutine Thermo_Init
-
-    ! subroutine thermoarr(tau,cs2b,opacity, dopacity)
-    ! !Compute unperturbed sound speed squared,
-    ! !and ionization fraction by interpolating pre-computed tables.
-    ! !If requested also get time derivative of opacity
-    ! implicit none
-    ! real(dl) tau,cs2b,opacity(nscatter)
-    ! real(dl), intent(out), optional :: dopacity(nscatter)
-
-    ! integer i
-    ! real(dl) d
-
-    ! d=log(tau/tauminn)/dlntau+1._dl
-    ! i=int(d)
-    ! d=d-i
-    ! if (i < 1) then
-    !     !Linear interpolation if out of bounds (should not occur).
-    !     cs2b=cs2(1)+(d+i-1)*dcs2(1)
-    !     opacity=this%dotmu(1,:)+(d-1)*ddotmu(1,:)
-    !     stop 'thermo out of bounds'
-    ! else if (i >= nthermo) then
-    !     cs2b=cs2(nthermo)+(d+i-nthermo)*dcs2(nthermo)
-    !     opacity=this%dotmu(nthermo,:)+(d-nthermo)*ddotmu(nthermo,:)
-    !     if (present(dopacity)) then
-    !         dopacity = 0
-    !         stop 'thermo: shouldn''t happen'
-    !     end if
-    ! else
-    !     !Cubic spline interpolation.
-    !     cs2b=cs2(i)+d*(dcs2(i)+d*(3*(cs2(i+1)-cs2(i))  &
-    !     -2*dcs2(i)-dcs2(i+1)+d*(dcs2(i)+dcs2(i+1)  &
-    !     +2*(cs2(i)-cs2(i+1)))))
-    !     opacity=dthis%otmu(i,:)+d*(ddotmu(i,:)+d*(3*(this%dotmu(i+1,:)-this%dotmu(i,:)) &
-    !     -2*ddotmu(i,:)-ddotmu(i+1,:)+d*(ddotmu(i,:)+ddotmu(i+1,:) &
-    !     +2*(this%dotmu(i,:)-this%dotmu(i+1,:)))))
-
-    !     if (present(dopacity)) then
-    !         dopacity=(ddotmu(i,:)+d*(dddotmu(i,:)+d*(3*(ddotmu(i+1,:)  &
-    !         -ddotmu(i,:))-2*dddotmu(i,:)-dddotmu(i+1,:)+d*(dddotmu(i,:) &
-    !         +dddotmu(i+1,:)+2*(ddotmu(i,:)-ddotmu(i+1,:))))))/(tau*dlntau)
-    !     end if
-    ! end if
-    ! end subroutine thermoarr
 
     subroutine SetTimeSteps(this,State,TimeSteps)
     !Set time steps to use for sampling the source functions for the CMB power spectra
@@ -3553,13 +3389,19 @@
     d=log(tau/this%tauminn)/this%dlntau+1._dl
     i=int(d)
     d=d-i
-    !write(*,*) 'i', i
 
     ! andrea
     do scat = 1, nscatter
     ! 
         if (i < this%nthermo) then
             ! andrea change
+            opacity(scat)=this%dotmu(i,scat)+d*(this%ddotmu(i,scat)+d*(3._dl*(this%dotmu(i+1,scat)-this%dotmu(i,scat)) &
+                -2._dl*this%ddotmu(i,scat)-this%ddotmu(i+1,scat)+d*(this%ddotmu(i,scat)+this%ddotmu(i+1,scat) &
+                +2._dl*(this%dotmu(i,scat)-this%dotmu(i+1,scat)))))
+            dopacity(scat)=(this%ddotmu(i,scat)+d*(this%dddotmu(i,scat)+d*(3._dl*(this%ddotmu(i+1,scat)  &
+                -this%ddotmu(i,scat))-2._dl*this%dddotmu(i,scat)-this%dddotmu(i+1,scat)+d*(this%dddotmu(i,scat) &
+                +this%dddotmu(i+1,scat)+2._dl*(this%ddotmu(i,scat)-this%ddotmu(i+1,scat))))))/(tau &
+                *this%dlntau)
             ddopacity(scat) = (this%dddotmu(i, scat) + d * (this%ddddotmu(i, scat) + d * (3.0_dl * (this%dddotmu(i + 1, scat) &
                 - this%dddotmu(i, scat)) - 2.0_dl * this%ddddotmu(i, scat) - this%ddddotmu(i + 1, scat) &
                 + d * (this%ddddotmu(i, scat) + this%ddddotmu(i + 1, scat) + 2.0_dl * (this%dddotmu(i, scat) &
@@ -3672,7 +3514,6 @@
             if (CP%want_cl_2D_array) then
                 if (allocated(this%Cl_scalar_array)) deallocate(this%Cl_scalar_array)
                 ! andrea
-                !write(*,*) 'num_redshift', State%num_redshiftwindows
                 allocate(this%Cl_scalar_Array(CP%Min_l:CP%Max_l, &
                     3+State%num_redshiftwindows+num_cmb_freq*2+CP%CustomSources%num_custom_sources, &
                     3+State%num_redshiftwindows+num_cmb_freq*2+CP%CustomSources%num_custom_sources))
@@ -3736,14 +3577,13 @@
     Type(CAMBParams), pointer :: CP
     integer lmin, nsource_out
     integer f_i_1,f_i_2
+    integer k1, k2
+    character(len=100) :: filename
 
     CP=> State%CP
     lmin= CP%Min_l
 
     fact = PresentDefault(1._dl, factor)
-    
-    !write(*,*) 'test', lmin
-    !write(*,*) 'scal_freqs', this%Cl_lensed_freqs(2,1,4,4)
     
     if (CP%WantScalars .and. ScalFile /= '') then
         last_C=min(C_PhiTemp,State%Scalar_C_last)
@@ -3808,7 +3648,6 @@
         end do
         close(unit)
     end if
-    !write(*,*) 'this%Cl_lensed_freqs', this%Cl_lensed_freqs(100,4,4,4)
     
     if (CP%WantScalars .and. CP%DoLensing .and. LensFile /= '') then
         unit = open_file_header(LensFile, 'L', CT_name_tags)
@@ -3832,9 +3671,29 @@
         end if
     end if
 
-    !write(*,*) 'results', fact*this%Cl_lensed_freqs(:, CT_Temp:CT_Cross,6,6)
-    !write(*,*) 'totalo', fact*this%Cl_lensed_freqs(1000, CT_Temp,6,6)
-    !write(*,*) 't arg', this%Cl_lensed_freqs(1000, CT_Temp,6,6)
+    filename = 'array6.dat'
+
+    ! Open the file for writing
+    open(unit=10, file=filename, status='replace', action='write')
+
+    ! Write the array values to the file
+    ! Write the array values along with their row indices to the file
+    do k1 = 1, this%lmax_lensed
+        write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
+        do k2 = 1, 4
+            if (k2 < 4) then
+                write(10, '(F40.20, A)', advance='no') fact*this%Cl_lensed_freqs(k1, k2, 6, 6), CHAR(9) ! Write value followed by a tab
+            else
+                write(10, '(F40.20)') fact*this%Cl_lensed_freqs(k1, k2, 6, 6) ! Write last value in the row without a tab
+            end if
+        end do
+        write(10, *) ! End the line after each row
+    end do
+
+    ! Close the file
+    close(10)
+    
+    print *, 'Array values written to ', trim(filename)
 
     if (CP%WantScalars .and. CP%WantTensors .and. CP%DoLensing .and. LensTotFile /= '') then
         unit = open_file_header(LensTotFile, 'L', CT_name_tags)
@@ -4047,9 +3906,6 @@
         endif
     end associate
     end function TRecfast_xe
-
-    ! andrea
-    ! andrea
 
     subroutine TRecfast_xe_Tm(this,a, xe, Tm)
     class(TRecfast) :: this

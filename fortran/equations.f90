@@ -50,7 +50,7 @@
     !Description of this file. Change if you make modifications.
     ! andrea
     character(LEN=*), parameter :: Eqns_name = 'cdm_rayleigh_backeffect'
-    logical, parameter :: rayleigh_back = .false.
+    logical, parameter :: rayleigh_back = .true.
     ! andrea
     logical, parameter :: plot_evolve = .false. !for outputing time evolution
 
@@ -398,7 +398,7 @@
         ! andrea
         else if (next_switch == EV%RayleighSwitchOnTime) then
             EVout%RayleighSwitchOnTime = noSwitch
-            EVout%Rayleigh = .false.
+            EVout%Rayleigh = .true.
             call SetupScalarArrayIndices(EVout)
             call CopyScalarVariableArray(y,yout, EV, EVout)
             EV=EVout
@@ -524,7 +524,7 @@
         y(EV%g_ix+2)= 32._dl/45._dl*EV%k_buf/opacity(1)*y(ixt_shear)
         y(EV%E_ix+2) = y(EV%g_ix+2)/4
         ! andrea
-        EVout%Rayleigh = .false.
+        EVout%Rayleigh = .true.
         call SetupTensorArrayIndices(EVout)
         call CopyTensorVariableArray(y,yout, EV, EVout)
         EV=EVout
@@ -762,7 +762,7 @@
         ! andrea
         if (EV%Rayleigh .and. EVout%Rayleigh) then
              do i=1,num_cmb_freq
-                 !assume number of frequencies is fixed
+        !         !assume number of frequencies is fixed
                  ix_off2 = EVOut%g_ix_freq + (i-1)*EVOut%freq_neq
                  ix_off = EV%g_ix_freq + (i-1)*EV%freq_neq
                  lmax = min(EV%lmaxg,EVout%lmaxg)
@@ -910,7 +910,7 @@
              ix_off = EV%polind_freq + (i-1)*EV%freq_neq
              yout(ix_off2+2:ix_off2+lmax)=y(ix_off+2:ix_off+lmax)
              yout(ix_off2+2+(lmax-1):ix_off2+(lmax-1)+lmax)=y(ix_off+2+(lmax-1):ix_off+(lmax-1)+lmax)
-             end do
+            end do
         end if
         ! andrea
 
@@ -1773,7 +1773,6 @@
     call derivs(EV, this, etat, EV%ScalEqsToPropagate,tau,y,yprimein)
     yprime(1:EV%nvar) = yprimein(1:EV%nvar)
     ! andrea
-    !write(*,*) 'Equations Sources', Sources
     nullify(EV%OutputSources, EV%CustomSources)
 
     end subroutine output
@@ -2030,7 +2029,8 @@
     else
         EV%RayleighSwitchOnTime=State%tau0+1
     end if
-    EV%Rayleigh = .false.
+
+    !EV%Rayleigh = .true.
     ! andrea
 
     y=0
@@ -2373,12 +2373,11 @@
     type(TRecfast) :: etat
     ! and 
     integer n,nu_i
-    real(dl) ay(n),ayprime(n)
     real(dl) w
     real(dl), intent(in) :: tau
     real(dl) k,k2
     ! andrea
-    real(dl) y(EV%nvar), yin(EV%nvar), yprime(EV%nvar), yprimein(EV%nvar)
+    real(dl) ay(n), ayin(n), ayprime(n), ayprimein(n)
     ! andrea
     real(dl) photbar,cs2,pb43,grho,slip,clxgdot, &
         clxcdot,clxbdot,adotdota,gpres,clxrdot,etak
@@ -2422,7 +2421,9 @@
     real(dl) polter_freq, opac_rayleigh, opac_tot
     ! andrea
 
-    !write(*,*) 'is rayleigh :', EV%Rayleigh
+    ayin = ay
+    ayprimein = ayprime
+
     k=EV%k_buf
     k2=EV%k2_buf
     
@@ -2525,15 +2526,15 @@
     dgq=dgq + grhog_t*qg+grhor_t*qr
 
     if (.not. EV%TightCoupling .and. .not.EV%no_phot_multpoles )  then
-            call Phot_Integrate_L012(EV,ay,drhophot,qgphot,piphot, opacity, opac_qgphot,opac_phot)
-            if (rayleigh_back) then
+        call Phot_Integrate_L012(EV, ay, drhophot, qgphot, piphot, opacity, opac_qgphot, opac_phot)
+        if (rayleigh_back) then
             dgrho=dgrho + grhog_t*drhophot
             dgq=dgq + grhog_t*qgphot
-            else
+        else
             opac_qgphot = 0
             opac_phot = opacity(1)
-            end if
         end if
+    end if
 
     !  Photon mass density over baryon mass density
     photbar=grhog_t/grhob_t
@@ -2549,6 +2550,7 @@
 
     !  Get sigma (shear) and z from the constraints
     ! have to get z from eta for numerical stability
+
     z=(0.5_dl*dgrho/k + etak)/adotoa
     if (State%flat) then
         !eta*k equation
@@ -2709,50 +2711,50 @@
             endif
         end if
     end if
-
+    !write(*,*) 'ray condi', EV%Rayleigh
     if (EV%Rayleigh) then
-         !assume after tight coupling ended
+    !     !assume after tight coupling ended
          do f_i = 1, num_cmb_freq
-                !write(*,*) 'freq_factors = ', freq_factors
+         !       !write(*,*) 'freq_factors = ', freq_factors
                 opac_rayleigh = etat%Recombination_rayleigh_eff(a)*State%akthom/a2*(min(1._dl,&
-                  freq_factors(f_i,1)/a2**2 + freq_factors(f_i,2)/a2**3  + freq_factors(f_i,3)/a2**4))
+                                freq_factors(f_i,1)/a2**2 + freq_factors(f_i,2)/a2**3  + freq_factors(f_i,3)/a2**4))
                 opac_tot=opac_rayleigh+opacity(1)
                 ind = EV%g_ix_freq + (f_i-1)*EV%freq_neq
                 ayprime(ind)=-k*ay(ind+1)
                 ayprime(ind+1)= EV%denlk(1)*ay(ind)-EV%denlk2(1)*ay(ind+2) + &
-                    4._dl/3*photbar*(-opacity(1)*ay(ind+1) + opac_rayleigh*(4._dl/3*vb-qg-ay(ind+1)))/pb43
+                                4._dl/3*photbar*(-opacity(1)*ay(ind+1) + opac_rayleigh*(4._dl/3*vb-qg-ay(ind+1)))/pb43
                 E2=ay(EV%polind_freq + (f_i-1)*EV%freq_neq +2)
                 polter_freq = ay(ind+2)/10+9._dl/15*E2 !2/15*(3/4 pig + 9/2 E2)
                 if (EV%lmaxg>2) then
-                     ayprime(ind+2)=EV%denlk(2)*ay(ind+1)-EV%denlk2(2)*ay(ind+3)-opac_tot*(ay(ind+2) - polter_freq) &
-                       -opac_rayleigh*(ay(EV%g_ix+2) - polter) 
-                     ix= ind+2
+                     ayprime(ind+2)= EV%denlk(2)*ay(ind+1)-EV%denlk2(2)*ay(ind+3)-opac_tot*(ay(ind+2) - polter_freq) &
+                                    -opac_rayleigh*(ay(EV%g_ix+2) - polter) 
+                     ix = ind+2
                      do  l=3,EV%lmaxg-1
-                        ix=ix+1
-                        ayprime(ix)=(EV%denlk(l)*ay(ix-1)-EV%denlk2(l)*ay(ix+1))-opac_tot*ay(ix)-(opac_rayleigh)*ay(EV%g_ix+l)
+                        ix = ix+1
+                        ayprime(ix) = (EV%denlk(l)*ay(ix-1)-EV%denlk2(l)*ay(ix+1))-opac_tot*ay(ix)-(opac_rayleigh)*ay(EV%g_ix+l)
                      end do
                      ix=ix+1
                   !  Truncate the photon moment expansion
-                     ayprime(ix)=k*ay(ix-1)-(EV%lmaxg+1)*cothxor*ay(ix) -opac_tot*ay(ix)-opac_rayleigh*ay(EV%g_ix+EV%lmaxg)
+                     ayprime(ix) = k*ay(ix-1)-(EV%lmaxg+1)*cothxor*ay(ix) -opac_tot*ay(ix)-opac_rayleigh*ay(EV%g_ix+EV%lmaxg)
                 else 
-                     ayprime(ind+2)=EV%denlk(2)*ay(ind+1)-opac_tot*(ay(ind+2) - polter_freq)-opac_rayleigh*(ay(EV%g_ix+2) - polter) 
+                     ayprime(ind+2) = EV%denlk(2)*ay(ind+1)-opac_tot*(ay(ind+2) - polter_freq)-opac_rayleigh*(ay(EV%g_ix+2) - polter) 
                 endif
         !  Polarization
-                    !l=2
-                    ix=EV%polind_freq+(f_i-1)*EV%freq_neq + 2
-                    if (EV%lmaxgpol>2) then
-                      ayprime(ix) = -opac_tot*(ay(ix) - polter_freq) - k/3._dl*ay(ix+1)- (opac_rayleigh)*(ay(EV%polind+2) - polter)
-                      do l=3,EV%lmaxgpol-1
-                       ix=ix+1
-                       ayprime(ix)=-opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+l) + (EV%denlk(l)*ay(ix-1)-EV%polfack(l)*ay(ix+1))
-                      end do
-                      ix=ix+1
-                      !truncate
-                      ayprime(ix)=-opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+EV%lmaxgpol) + &
-                        k*EV%poltruncfac*ay(ix-1)-(EV%lmaxgpol+3)*cothxor*ay(ix)
-                   else !closed case
-                      ayprime(ix) = -opac_tot*(ay(ix) - polter_freq)-opac_rayleigh*ay(EV%polind+2)
-                   endif
+                l=2
+                ix=EV%polind_freq+(f_i-1)*EV%freq_neq + 2
+                if (EV%lmaxgpol>2) then
+                    ayprime(ix) = -opac_tot*(ay(ix) - polter_freq) - k/3._dl*ay(ix+1)- (opac_rayleigh)*(ay(EV%polind+2) - polter)
+                    do l=3,EV%lmaxgpol-1
+                        ix = ix+1
+                        ayprime(ix) = -opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+l) + (EV%denlk(l)*ay(ix-1)-EV%polfack(l)*ay(ix+1))
+                    end do
+                    ix=ix+1
+                    !truncate
+                    ayprime(ix) = -opac_tot*ay(ix)-opac_rayleigh*ay(EV%polind+EV%lmaxgpol) + &
+                                k*EV%poltruncfac*ay(ix-1)-(EV%lmaxgpol+3)*cothxor*ay(ix)
+                else !closed case
+                    ayprime(ix) = -opac_tot*(ay(ix) - polter_freq)-opac_rayleigh*ay(EV%polind+2)
+                endif
          end do
      end if
 
@@ -2948,6 +2950,8 @@
         end if
     end if
 
+    ayprimein = ayprime
+
     if (associated(EV%OutputTransfer) .or. associated(EV%OutputSources)) then
         if (EV%TightCoupling .or. EV%no_phot_multpoles) then
             E=0
@@ -3085,12 +3089,6 @@
             call IonizationFunctionsAtTime(this, tau, a, opacity, dopacity, ddopacity, &
                  visibility, dvisibility, ddvisibility, exptau, lenswindow)
 
-            !do kays = 1, nscatter
-            !    if (visibility(kays)  > 0.2) then
-                    !write(*,*) 'visibility : ', vis(scat), scat
-            !        write(*,*) 'visibility(kays) : ', visibility(kays)
-            !    end if
-            !end do
 
             tau0 = State%tau0
             phidot = (1.0d0/2.0d0)*(adotoa*(-dgpi - 2*k2*phi) + dgq*k - &
@@ -3105,29 +3103,33 @@
                          50.0d0*k*octgdot*EV%Kf(2) + (1.0d0/25.0d0)*k*qgdot - 1.0d0/5.0d0 &
                          *k*EV%Kf(2)*Edot(3) + (-1.0d0/10.0d0*pig + (7.0d0/10.0d0)* &
                          polter - 3.0d0/5.0d0*E(2))*dopacity(1) + (-1.0d0/10.0d0*pigdot &
-                         + (7.0d0/10.0d0)*polterdot - 3.0d0/5.0d0*Edot(2))*opacity(1)
+                        + (7.0d0/10.0d0)*polterdot - 3.0d0/5.0d0*Edot(2))*opacity(1)
             !Temperature source terms, after integrating by parts in conformal time
-
             ! and fix
+
             s_ix = 0
-            !write(*,*) 'nscatter', nscatter
             do f_i = 1, nscatter
                 if (.not. EV%no_phot_multpoles .and. EV%Rayleigh .and. f_i>1) then
-                    ix_off=EV%g_ix_freq+(f_i-2)*EV%freq_neq 
-                    y(EV%g_ix:EV%g_ix+EV%freq_neq-1) = yin(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
-                                                       yin(ix_off:ix_off+EV%freq_neq-1)
-                    yprime(EV%g_ix:EV%g_ix+EV%freq_neq-1) = yprimein(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
-                                                            yprimein(ix_off:ix_off+EV%freq_neq-1)
-
-                    pig = y(EV%g_ix+2)
-                    polter = 0.1_dl*pig+9._dl/15._dl*E(2)
-                    pigdot = yprime(EV%g_ix+2)
-                    octg = y(EV%g_ix+3)
-                    octgprime = yprime(EV%g_ix+3)
-                    clxg = y(EV%g_ix)
-                    qg  = y(EV%g_ix+1)
-                    qgdot = yprime(EV%g_ix+1)
-                    !exptau(f_i) = exptau(1)
+                    ix_off=EV%g_ix_freq+(f_i-2)*EV%freq_neq
+                    ay(EV%g_ix:EV%g_ix+EV%freq_neq-1) = ayin(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
+                                                        ayin(ix_off:ix_off+EV%freq_neq-1)
+                    ayprime(EV%g_ix:EV%g_ix+EV%freq_neq-1) = ayprimein(EV%g_ix:EV%g_ix+EV%freq_neq-1)+ &
+                    ayprimein(ix_off:ix_off+EV%freq_neq-1)
+                    pig = ay(EV%g_ix+2)
+                    pigdot = ayprime(EV%g_ix+2)
+                    octg = ay(EV%g_ix+3)
+                    octgprime = ayprime(EV%g_ix+3)
+                    clxg = ay(EV%g_ix)
+                    qg  = ay(EV%g_ix+1)
+                    qgdot = ayprime(EV%g_ix+1)
+                    polter = pig/10+9._dl/15*E(2)
+                    polterdot = (1.0d0/10.0d0)*pigdot + (3.0d0/5.0d0)*Edot(2)
+                    polterddot = -2.0d0/25.0d0*adotoa*dgq/(k*EV%Kf(1)) - 4.0d0/75.0d0*adotoa* &
+                         k*sigma - 4.0d0/75.0d0*dgpi - 2.0d0/75.0d0*dgrho/EV%Kf(1) - 3.0d0/ &
+                         50.0d0*k*octgdot*EV%Kf(2) + (1.0d0/25.0d0)*k*qgdot - 1.0d0/5.0d0 &
+                         *k*EV%Kf(2)*Edot(3) + (-1.0d0/10.0d0*pig + (7.0d0/10.0d0)* &
+                         polter - 3.0d0/5.0d0*E(2))*dopacity(f_i) + (-1.0d0/10.0d0*pigdot &
+                        + (7.0d0/10.0d0)*polterdot - 3.0d0/5.0d0*Edot(2))*opacity(f_i)
                 end if
                 !2phi' term (\phi' + \psi' in Newtonian gauge), phi is the Weyl potential
                 ISW = 2*phidot*exptau(f_i)
@@ -3138,20 +3140,12 @@
 
                 EV%OutputSources(s_ix+1) = ISW + doppler + monopole_source + quadrupole_source
                 ang_dist = f_K(tau0-tau)
-                !if (EV%OutputSources(4) < -0.5) then
-                    !write(*,*) 'ISW : ', ISW + doppler + monopole_source + quadrupole_source
-                    !write(*,*) 'ISW', monopole_source, doppler, quadrupole_source
-                    !write(*,*) 'visibility', visibility(f_i)
-                !end if
+
                 if (tau < tau0) then
                     !E polarization source
-                    EV%OutputSources(s_ix+2)=visibility(1)*polter*(15._dl/8._dl)/(ang_dist**2*k2)
+                    EV%OutputSources(s_ix+2)= visibility(f_i)*polter*(15._dl/8._dl)/(ang_dist**2*k2)
                     !factor of four because no 1/16 later
                 end if
-
-                !if (rayleigh_diff .and. f_i>2) then
-                !     EV%OutputSources(s_ix+1:s_ix+2)= EV%OutputSources(s_ix+1:s_ix+2) - EV%OutputSources(1:2)
-                !end if
 
                 s_ix = s_ix+2
             
@@ -3160,77 +3154,15 @@
                     !Get lensing sources
                     if (tau>State%tau_maxvis .and. tau0-tau > 0.1_dl) then
                         EV%OutputSources(3) = -2*phi*f_K(tau-State%tau_maxvis)/(f_K(tau0-State%tau_maxvis)*ang_dist)
+                        !write(*,*) 's3 : ', 2*phi*f_K(tau-State%tau_maxvis)/(f_K(tau0-State%tau_maxvis)*ang_dist)
                         !We include the lensing factor of two here
                     end if
                     s_ix=s_ix+1
                 end if
+                !EV%OutputSources(s_ix) = 0
             end do !f_1
-        !    and
-        !if (EV%OutputSources(1) < -0.5) then
-        !    EV%OutputSources(1) = 0.0005
-        !end if
-        !if (EV%OutputSources(2) < -0.5) then
-        !    EV%OutputSources(2) = 0.0005
-        !end if
-        !if (EV%OutputSources(3) < -0.5) then
-        !    EV%OutputSources(3) = 0.0005
-        !end if
-        !if (EV%OutputSources(4) < -0.5) then
-        !    EV%OutputSources(4) = 0.0005
-        !end if
-        !if (EV%OutputSources(5) < -0.5) then
-        !    EV%OutputSources(5) = 0.0005
-        !end if
-        !if (EV%OutputSources(6) < -0.5) then
-        !    EV%OutputSources(6) = 0.0005
-        !end if
-        !if (EV%OutputSources(7) < -0.5) then
-        !    EV%OutputSources(7) = 0.0005
-        !end if
-        !if (EV%OutputSources(8) < -0.5) then
-        !    EV%OutputSources(8) = 0.0005
-        !end if
-        !if (EV%OutputSources(9) < -0.5) then
-        !    EV%OutputSources(9) = 0.0005
-        !end if
-        !if (EV%OutputSources(10) < -0.5) then
-        !    EV%OutputSources(10) = 0.0005
-        !end if
-        !if (EV%OutputSources(11) < -0.5) then
-        !    EV%OutputSources(11) = 0.0005
-        !end if
-        !if (EV%OutputSources(12) < -0.5) then
-        !    EV%OutputSources(12) = 0.0005
-        !end if
-        !if (EV%OutputSources(13) < -0.5) then
-        !    EV%OutputSources(13) = 0.0005
-        !end if
-        !if (EV%OutputSources(14) < -0.5) then
-        !    EV%OutputSources(14) = 0.0005
-        !end if
-        !if (EV%OutputSources(15) < -0.5) then
-        !    EV%OutputSources(15) = 0.0005
-        !end if
-        
-            !write(*,*) 'EV%OutputSources(4)', EV%OutputSources(4)
-            !write(*,*) 'test', (tau>State%tau_maxvis .and. tau0-tau > 0.1_dl)
-            !write(*,*) 'EV%OutputSources(1)', EV%OutputSources(1)
-            !write(*,*) 'EV%OutputSources(2)', EV%OutputSources(2)
-            !write(*,*) 'EV%OutputSources(3)', EV%OutputSources(3)
-        !end if
-        !if (tau < 210) then
-        !write(*,*) EV%OutputSources(12)
-        !write(*,*) '1', ISW + doppler + monopole_source + quadrupole_source
-        !write(*,*) '2', visibility(1)*polter*(15._dl/8._dl)/(ang_dist**2*k2)
-        !write(*,*) '3', 2*phi*f_K(tau-State%tau_maxvis)/(f_K(tau0-State%tau_maxvis)*ang_dist)
-        !write(*,*) '1', visibility(:)
-        !end if
         end if
     end if
-
-    !if (EV%OutputSources(4) < -1.0) 
-    !write(*,*) 'EV%OutputSources', EV%OutputSources
-    !write(*,*) 'EV%OutputSources(4)', EV%OutputSources(4)
     
     end subroutine derivs
 
@@ -3510,7 +3442,7 @@
             !assume after tight coupling ended
                 do f_i = 1, num_cmb_freq
                     opac_rayleigh = etat%Recombination_rayleigh_eff(a)*State%akthom/a2*(min(1._dl,&
-                    freq_factors(f_i,1)/a2**2 + freq_factors(f_i,2)/a2**3  + freq_factors(f_i,3)/a2**4)) 
+                                    freq_factors(f_i,1)/a2**2 + freq_factors(f_i,2)/a2**3  + freq_factors(f_i,3)/a2**4)) 
                     opac_tot=opac_rayleigh+opacity(1)
                     ind = EV%g_ix_freq + (f_i-1)*EV%freq_neq
                     Ef => ayt(ind + (EV%lmaxt-1)+1:)
@@ -3536,7 +3468,7 @@
                     EV%denlkt(3,2)*Ef(3)
                     do l=3, EV%lmaxpolt-1
                         Efprime(l) =(EV%denlkt(1,L)*Ef(l-1)-EV%denlkt(3,L)*Ef(l+1) + EV%denlkt(4,L)*Bf(l)) &
-                        -opac_rayleigh*E(l) - opac_tot*Ef(l)
+                                    -opac_rayleigh*E(l) - opac_tot*Ef(l)
                     end do
                     l= EV%lmaxpolt
                     !truncate: difficult, but setting l+1 to zero seems to work OK
@@ -3544,7 +3476,7 @@
                     Bfprime(2) =-EV%denlkt(3,2)*Bf(3) - EV%denlkt(4,2)*Ef(2) -opac_rayleigh*B(2) -opac_tot*Bf(2)
                     do l=3, EV%lmaxpolt-1
                         Bfprime(l) =(EV%denlkt(1,L)*Bf(l-1) -EV%denlkt(3,L)*Bf(l+1) - EV%denlkt(4,L)*Ef(l)) &
-                        -opac_rayleigh*B(l) - opac_tot*Bf(l)
+                                    -opac_rayleigh*B(l) - opac_tot*Bf(l)
                     end do
                     l=EV%lmaxpolt
                     !truncate
