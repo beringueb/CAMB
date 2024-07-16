@@ -2664,6 +2664,8 @@
         end if
     end if
 
+    !write(*,*) 'ray_diff = ', rayleigh_diff
+
     if (CP%WantVectors) then
         do i = C_Temp, CT_cross
             call CLData%CTransVec%ls%InterpolateClArr(iCl_vector(1,i), &

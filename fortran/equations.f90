@@ -14,8 +14,6 @@
     real(dl), intent(in) :: a
     real(dl) :: dtauda, grhoa2, grhov_t
     integer :: f_i = 1
-    !integer, parameter :: num_cmb_freq = 6 !!!
-    !integer, parameter :: nscatter = num_cmb_freq+1
 
     call this%CP%DarkEnergy%BackgroundDensityAndPressure(this%grhov, a, grhov_t)
 
@@ -50,7 +48,7 @@
     !Description of this file. Change if you make modifications.
     ! andrea
     character(LEN=*), parameter :: Eqns_name = 'cdm_rayleigh_backeffect'
-    logical, parameter :: rayleigh_back = .true.
+    logical, parameter :: rayleigh_back = .false.
     ! andrea
     logical, parameter :: plot_evolve = .false. !for outputing time evolution
 
@@ -178,7 +176,7 @@
         opacity, dopacity, ddopacity, visibility, dvisibility, ddvisibility, exptau, &
         tau0, tau_maxvis, Kf, f_K)
     use precision
-    integer, parameter :: num_cmb_freq = 6 !!!
+    integer, parameter :: num_cmb_freq =  4 
     integer, parameter :: nscatter = num_cmb_freq+1
     real(dl), intent(out) :: sources(:)
     real(dl), intent(in) :: tau, a, adotoa, grho, gpres,w_lam, cs2_lam,  &
@@ -1913,7 +1911,7 @@
     real(dl) k,k2
     real(dl), dimension(:),pointer :: E,Eprime
     real(dl) a, lenswindow
-    integer, parameter :: num_cmb_freq = 6 !!!
+    integer, parameter :: num_cmb_freq =  4 
     integer, parameter :: nscatter = num_cmb_freq+1
     real(dl) :: opacity(nscatter), dopacity(nscatter), ddopacity(nscatter), exptau(nscatter), &
                         visibility(nscatter), dvisibility(nscatter), ddvisibility(nscatter)
@@ -2407,8 +2405,6 @@
     real(dl) E(2:3), Edot(2:3)
     real(dl) phidot, polterdot, polterddot, octg, octgdot
     real(dl) lenswindow
-    !integer, parameter :: num_cmb_freq = 6 !!!
-    !integer, parameter :: nscatter = num_cmb_freq+1
     real(dl) :: opacity(nscatter), dopacity(nscatter), &
                             ddopacity(nscatter), exptau(nscatter), &
                             visibility(nscatter), dvisibility(nscatter), &
@@ -3147,6 +3143,9 @@
                     !factor of four because no 1/16 later
                 end if
 
+                if (rayleigh_diff .and. f_i>2) then
+                    EV%OutputSources(s_ix+1:s_ix+2)= EV%OutputSources(s_ix+1:s_ix+2) - EV%OutputSources(1:2)
+                end if
                 s_ix = s_ix+2
             
                 if (size(EV%OutputSources) > 2 .and. f_i==1) then
@@ -3355,7 +3354,7 @@
     ! andrea
     real(dl) opac_rayleigh,opac_tot,polter_freq
     integer f_i
-    integer, parameter :: num_cmb_freq = 6 !!!
+    integer, parameter :: num_cmb_freq =  4 
     integer, parameter :: nscatter = num_cmb_freq+1
     real(dl) tau, rhopi, opacity(nscatter), pirdt
     real(dl), dimension(:),pointer :: Ef,Bf,Efprime,Bfprime

@@ -612,7 +612,7 @@
         if (ncustomsources>0) EV%CustomSources => custom_sources
         call derivs(EV, this, etat, EV%ScalEqsToPropagate,tau,y,yprime)
         nullify(EV%OutputTransfer, EV%OutputSources, EV%CustomSources)
-        call thisValues(tau,a, cs2,opacity)
+        call this%Values(tau,a, cs2,opacity)
         outputs(1:Transfer_Max, j, EV%q_ix) = Arr
         outputs(Transfer_Max+1, j, EV%q_ix) = a
         outputs(Transfer_Max+2, j, EV%q_ix) = y(ix_etak) !etak

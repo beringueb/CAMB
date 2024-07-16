@@ -373,10 +373,10 @@
         derived_thetaEQ=12, derived_theta_rs_EQ = 13
     integer, parameter :: nthermo_derived = 13
     ! andrea
-    integer, parameter :: num_cmb_freq = 6!!!
-    logical :: rayleigh_diff = .false.
+    integer, parameter :: num_cmb_freq =  4 
+    logical :: rayleigh_diff = .true.
     logical :: rayleigh_pows(3) = [.true.,.true.,.true.]
-    logical :: rayleigh_back_approx = .true.
+    logical :: rayleigh_back_approx = .false.
     integer, parameter :: nscatter = num_cmb_freq+1
     real(dl) :: phot_freqs(num_cmb_freq)  !set in equations _Init
     real(dl) :: phot_int_kernel(num_cmb_freq)
@@ -412,10 +412,6 @@
         ! e^(-tau) and derivatives
         real(dl), dimension(:), allocatable :: dcs2
         real(dl), dimension(:,:), allocatable :: dotmu, ddotmu, sdotmu, emmu, demmu, dddotmu, ddddotmu ! BB24
-        ! real(dl) dotmu(nthermo,nscatter), ddotmu(nthermo,nscatter)
-        ! real(dl) sdotmu(nthermo,nscatter),emmu(nthermo,nscatter)
-        ! real(dl) demmu(nthermo,nscatter)
-        ! real(dl) dddotmu(nthermo,nscatter),ddddotmu(nthermo,nscatter)
         real(dl), dimension(:), allocatable :: ScaleFactor, dScaleFactor, adot, dadot
         real(dl), dimension(:), allocatable :: winlens, dwinlens
         real(dl) tauminn,dlntau
@@ -2279,10 +2275,10 @@
 
     CP => State%CP
 
-    if (num_cmb_freq<10) then
-        phot_freqs(1:6) = [0, 143, 217,353, 545, 857]
+    if (num_cmb_freq<30) then
+        phot_freqs(1:4) = [0, 0, 0, 0] 
 
-        !             phot_freqs(1:8) = [220,265,300,320,295,460,555,660]*1.085 !Prism
+        !             phot_freqs(1:4) = [0, 0, 0, 0] 
         do i=1, size(phot_freqs)
             q = phot_freqs(i)/56.8
             !this should not be used, just for code consistency
@@ -3670,30 +3666,6 @@
             end do
         end if
     end if
-
-    filename = 'array6.dat'
-
-    ! Open the file for writing
-    open(unit=10, file=filename, status='replace', action='write')
-
-    ! Write the array values to the file
-    ! Write the array values along with their row indices to the file
-    do k1 = 1, this%lmax_lensed
-        write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
-        do k2 = 1, 4
-            if (k2 < 4) then
-                write(10, '(F40.20, A)', advance='no') fact*this%Cl_lensed_freqs(k1, k2, 6, 6), CHAR(9) ! Write value followed by a tab
-            else
-                write(10, '(F40.20)') fact*this%Cl_lensed_freqs(k1, k2, 6, 6) ! Write last value in the row without a tab
-            end if
-        end do
-        write(10, *) ! End the line after each row
-    end do
-
-    ! Close the file
-    close(10)
-    
-    print *, 'Array values written to ', trim(filename)
 
     if (CP%WantScalars .and. CP%WantTensors .and. CP%DoLensing .and. LensTotFile /= '') then
         unit = open_file_header(LensTotFile, 'L', CT_name_tags)

@@ -134,146 +134,6 @@ class ClTransferData:
 
         return self.L, self.q, self.delta_p_l_k[source, :, :]
 
-@fortran_class
-
-class TCambComponent(CAMB_Structure):
-    _methods_ = [('ReadParams',[])
-                    ('Validate',[])
-
-class TRecombinationModel(TCambComponent):
-    _fields_ = [
-        ('min_a_evolve_Tm', c_double)
-    ]
-
-_methods_ = [('Init',[]
-                ('x_e', [d_arg], c_double)
-                ('xe_Tm', [d_arg], [d_arg], [d_arg])
-                ('T_m', [d_arg], c_double)
-                ('T_s', [d_arg], c_double)
-                ('Version', []
-                ('dDeltaxe_dtau', [d_arg], [d_arg], [d_arg], [d_arg], [d_arg], [d_arg])
-                ('get_Saha_z', [])
-                ]
-
-Nz = 10000  # For example
-
-# Definition of the RecombinationData structure
-class RecombinationData(Structure):
-    _fields_ = [
-        ('Recombination_saha_z', c_double),
-        ('NNow', c_double),
-        ('fHe', c_double),
-        ('zrec', c_double * Nz),
-        ('xrec', c_double * Nz),
-        ('dxrec', c_double * Nz),
-        ('Tsrec', c_double * Nz),
-        ('dTsrec', c_double * Nz),
-        ('tmrec', c_double * Nz),
-        ('dtmrec', c_double * Nz),
-        ('x_rayleigh_eff', c_double * Nz),
-        ('dx_rayleigh_eff', c_double * Nz),
-        ('DeltaB', c_double),
-        ('DeltaB_He', c_double),
-        ('Lalpha', c_double),
-        ('mu_H', c_double),
-        ('mu_T', c_double),
-        ('HO', c_double),
-        ('Tnow', c_double),
-        ('fu', c_double),
-        ('n_eq', c_int),
-        ('doTspin', c_bool),
-        ('OmegaK', c_double),
-        ('OmegaT', c_double),
-        ('z_eq', c_double),
-        ('State', POINTER(None))  # Placeholder pointer type for CAMBdata
-    ]
-
-class TThermoData(ctypes.Structure):
-    _fields_ = [
-        ('HasThermoData', c_bool),
-        ('nthermo', c_int),
-        ('tb', POINTER(c_double)),
-        ('cs2', POINTER(c_double)),
-        ('xe', POINTER(c_double)),
-        ('dcs2', POINTER(c_double)),
-        ('dotmu', POINTER(c_double)),
-        ('ddotmu', POINTER(c_double)),
-        ('sdotmu', POINTER(c_double)),
-        ('emmu', POINTER(c_double)),
-        ('demmu', POINTER(c_double)),
-        ('dddotmu', POINTER(c_double)),
-        ('ddddotmu', POINTER(c_double)),
-        ('ScaleFactor', POINTER(c_double)),
-        ('dScaleFactor', POINTER(c_double)),
-        ('adot', POINTER(c_double)),
-        ('dadot', POINTER(c_double)),
-        ('winlens', POINTER(c_double)),
-        ('dwinlens', POINTER(c_double)),
-        ('tauminn', c_double),
-        ('dlntau', c_double),
-        ('tight_tau', c_double),
-        ('actual_opt_depth', c_double),
-        ('matter_verydom_tau', c_double),
-        ('recombination_saha_tau', c_double),
-        ('r_drag0', c_double),
-        ('z_star', c_double),
-        ('z_drag', c_double),
-        ('step_redshift', POINTER(c_double)),
-        ('rhos_fac', POINTER(c_double)),
-        ('drhos_fac', POINTER(c_double)),
-        ('tau_start_redshiftwindows', c_double),
-        ('tau_end_redshiftwindows', c_double),
-        ('has_lensing_windows', c_bool),
-        ('recombination_Tgas_tau', c_double),
-        ('redshift_time', POINTER(c_double)),
-        ('dredshift_time', POINTER(c_double)),
-        ('arhos_fac', POINTER(c_double)),
-        ('darhos_fac', POINTER(c_double)),
-        ('ddarhos_fac', POINTER(c_double))
-    ]
-
-    _methods_ = [('Init',[int_arg])
-                    [('OpacityToTime'), [d_arg], c_double)
-                    [('values,]',  [d_arg, d_arg, d_arg, d_arg])
-                    [('values_array'),[d_arg, d_arg, d_arg, numpy_1d, numpy_1d])
-                    [('expansion_values',[d_arg, numpy_1d, numpy_1d, numpy_1d])
-                    [('expansion_values_array',[d_arg, numpy_1d, numpy_1d, numpy_1d])
-                    [('IonizationFunctionsAtTime',[d_arg, d_arg, numpy_1d, numpy_1d, numpy_1d, numpy_1d, numpy_1d, numpy_1d, numpy_1d, numpy_1d])
-                    [('DoWindowSpline',[c_int, c_int, c_int])
-                    [('SetTimeSteps',[c_int])
-                    [('SetTimeStepWindows',[c_int])
-                    ]
-    
-
-class TRecfast(TRecombinationModel):
-#class TRecfast(Structure):
-    _fields_ = [
-        ('RECFAST_fudge', c_double),
-        ('RECFAST_fudge_He', c_double),
-        ('RECFAST_Heswitch', c_int),
-        ('RECFAST_Hswitch', c_bool),
-        ('AGauss1', c_double),
-        ('AGauss2', c_double),
-        ('zGauss1', c_double),
-        ('zGauss2', c_double),
-        ('wGauss1', c_double),
-        ('wGauss2', c_double),
-        ('Calc', RecombinationData)
-    ]
-
-    _methods_ = [('ReadParams', [])
-                 ('Validate', [])
-                 ('Init', [])
-                 ('x_e',[d_arg])
-                 ('xe_Tm',[d_arg, d_arg, d_arg])
-                 ('T_m',[d_arg])
-                 ('T_s',[d_arg])
-                 ('Version', [])
-                 ('dDeltaxe_dtau', [d_arg, d_arg, d_arg d_arg, d_arg, d_arg, d_arg,])
-                 ('get_Saha_z',c_double)
-                 ('SelfPointer',)
-                 ('Recombination_rayleigh_eff',[d_arg], numpy_1d)
-                 ('total_scattering_eff',[d_arg], numpy_1d)
 
 @fortran_class
 class CAMBdata(F2003Class):
@@ -287,7 +147,7 @@ class CAMBdata(F2003Class):
     To quickly make a fully calculated CAMBdata instance for a set of parameters you can call :func:`.camb.get_results`.
 
     """
-    _fortran_class_module_ = 'Recombination'
+    _fortran_class_module_ = 'results'
 
     _fields_ = [("Params", CAMBparams),
                 ("ThermoDerivedParams", c_double * model.nthermo_derived,
@@ -1760,7 +1620,7 @@ class CAMBdata(F2003Class):
 
 
 CAMBdata_gettransfers = camblib.__handles_MOD_cambdata_gettransfers
-CAMBdata_gettransfers.argtypes = [POINTER(CAMBdata), POINTER(model.CAMBparams), POINTER(TThermoData), POINTER(TRecfast)
+CAMBdata_gettransfers.argtypes = [POINTER(CAMBdata), POINTER(model.CAMBparams),
                                   POINTER(c_int), POINTER(c_int)]
 CAMBdata_gettransfers.restype = c_int
 
@@ -1793,7 +1653,7 @@ CAMBdata_GetSigmaRArray.argtypes = [POINTER(CAMBdata), numpy_2d, numpy_1d, int_a
                                     int_arg]
 
 CAMBdata_CalcBackgroundTheory = camblib.__handles_MOD_cambdata_calcbackgroundtheory
-CAMBdata_CalcBackgroundTheory.argtypes = [POINTER(CAMBdata), POINTER(model.CAMBparams), POINT(TRecfast)]
+CAMBdata_CalcBackgroundTheory.argtypes = [POINTER(CAMBdata), POINTER(model.CAMBparams)]
 CAMBdata_CalcBackgroundTheory.restype = c_int
 
 CAMB_SetTotCls = camblib.__handles_MOD_camb_settotcls
@@ -1820,12 +1680,12 @@ del _set_cl_args
 
 CAMB_TimeEvolution = camblib.__handles_MOD_camb_timeevolution
 CAMB_TimeEvolution.restype = c_bool
-CAMB_TimeEvolution.argtypes = [POINTER(CAMBdata), POINTER(TThermoData), POINTER(TRecfast), int_arg, numpy_1d, int_arg, numpy_1d,
+CAMB_TimeEvolution.argtypes = [POINTER(CAMBdata), int_arg, numpy_1d, int_arg, numpy_1d,
                                int_arg, ndpointer(c_double, flags='C_CONTIGUOUS', ndim=3),
                                int_arg, POINTER(ctypes.c_void_p)]
 
 CAMB_BackgroundThermalEvolution = camblib.__handles_MOD_getbackgroundthermalevolution
-CAMB_BackgroundThermalEvolution.argtypes = [POINTER(CAMBdata), POINTER(TThermoData), POINTER(TRecfast), int_arg, numpy_1d, numpy_2d]
+CAMB_BackgroundThermalEvolution.argtypes = [POINTER(CAMBdata), int_arg, numpy_1d, numpy_2d]
 
 CAMB_GetBackgroundOutputs = camblib.__handles_MOD_camb_getbackgroundoutputs
 CAMB_GetBackgroundOutputs.argtypes = [POINTER(CAMBdata), numpy_1d, int_arg]
