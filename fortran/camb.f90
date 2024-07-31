@@ -425,6 +425,8 @@
     call P%DarkEnergy%ReadParams(Ini)
 
     P%h0 = Ini%Read_Double('hubble')
+    !P%zc = Ini%Read_Double('zc')
+    !P%fde_zc = Ini%Read_Double('fde_zc')
 
     if (Ini%Read_Logical('use_physical', .true.)) then
         P%ombh2 = Ini%Read_Double('ombh2')

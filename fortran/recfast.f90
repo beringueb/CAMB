@@ -373,7 +373,7 @@
         derived_thetaEQ=12, derived_theta_rs_EQ = 13
     integer, parameter :: nthermo_derived = 13
     ! andrea
-    integer, parameter :: num_cmb_freq =  4 
+    integer, parameter :: num_cmb_freq =  22 
     logical :: rayleigh_diff = .true.
     logical :: rayleigh_pows(3) = [.true.,.true.,.true.]
     logical :: rayleigh_back_approx = .false.
@@ -2276,9 +2276,9 @@
     CP => State%CP
 
     if (num_cmb_freq<30) then
-        phot_freqs(1:4) = [0, 0, 0, 0] 
+        phot_freqs(1:22) = [0, 21, 25, 30, 36, 43, 52, 62, 75, 90, 108, 129, 155, 186, 223, 268, 321, 385, 462, 555, 666, 800] 
 
-        !             phot_freqs(1:4) = [0, 0, 0, 0] 
+        !             phot_freqs(1:22) = [0, 21, 25, 30, 36, 43, 52, 62, 75, 90, 108, 129, 155, 186, 223, 268, 321, 385, 462, 555, 666, 800] 
         do i=1, size(phot_freqs)
             q = phot_freqs(i)/56.8
             !this should not be used, just for code consistency

@@ -176,7 +176,7 @@
         opacity, dopacity, ddopacity, visibility, dvisibility, ddvisibility, exptau, &
         tau0, tau_maxvis, Kf, f_K)
     use precision
-    integer, parameter :: num_cmb_freq =  4 
+    integer, parameter :: num_cmb_freq =  22 
     integer, parameter :: nscatter = num_cmb_freq+1
     real(dl), intent(out) :: sources(:)
     real(dl), intent(in) :: tau, a, adotoa, grho, gpres,w_lam, cs2_lam,  &
@@ -1911,7 +1911,7 @@
     real(dl) k,k2
     real(dl), dimension(:),pointer :: E,Eprime
     real(dl) a, lenswindow
-    integer, parameter :: num_cmb_freq =  4 
+    integer, parameter :: num_cmb_freq =  22 
     integer, parameter :: nscatter = num_cmb_freq+1
     real(dl) :: opacity(nscatter), dopacity(nscatter), ddopacity(nscatter), exptau(nscatter), &
                         visibility(nscatter), dvisibility(nscatter), ddvisibility(nscatter)
@@ -3354,7 +3354,7 @@
     ! andrea
     real(dl) opac_rayleigh,opac_tot,polter_freq
     integer f_i
-    integer, parameter :: num_cmb_freq =  4 
+    integer, parameter :: num_cmb_freq =  22 
     integer, parameter :: nscatter = num_cmb_freq+1
     real(dl) tau, rhopi, opacity(nscatter), pirdt
     real(dl), dimension(:),pointer :: Ef,Bf,Efprime,Bfprime
