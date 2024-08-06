@@ -572,7 +572,7 @@
     integer, intent(in) :: nsources, ncustomsources
     real(dl) tau,tol1,tauend, taustart
     integer j,ind
-    real(dl) c(24),w(EV%nvar,9), y(EV%nvar), cs2, opacity
+    real(dl) c(24),w(EV%nvar,9), y(EV%nvar), cs2, opacity(nscatter)
     real(dl) yprime(EV%nvar), ddelta, delta, adotoa,growth, a
     real(dl), target :: sources(nsources), custom_sources(ncustomsources)
     real, target :: Arr(Transfer_max)
@@ -596,7 +596,7 @@
         EV%OutputSources => sources
         EV%OutputStep = 0
         if (ncustomsources>0) EV%CustomSources => custom_sources
-        call derivs(EV,EV%ScalEqsToPropagate,tau,y,yprime)
+        call derivs(EV,EV%ScalEqsToPropagate,tau,y,yprime,j)
         nullify(EV%OutputTransfer, EV%OutputSources, EV%CustomSources)
         call State%ThermoData%Values(tau,a, cs2,opacity)
         outputs(1:Transfer_Max, j, EV%q_ix) = Arr
@@ -683,8 +683,9 @@
     real(dl), intent(in) :: times(ntimes)
     real(dl) :: outputs(9, ntimes)
     real(dl), allocatable :: spline_data(:), ddxe(:), ddTb(:)
-    real(dl) :: a, d, tau, cs2b, opacity, Tbaryon, dopacity, ddopacity, &
-        visibility, dvisibility, ddvisibility, exptau, lenswindow
+    real(dl) :: a, d, tau, cs2b, lenswindow, Tbaryon
+    real(dl) :: opacity(nscatter), dopacity(nscatter), ddopacity(nscatter), visibility(nscatter), &
+                dvisibility(nscatter), ddvisibility(nscatter), exptau(nscatter)
     integer i, ix
 
     if (.not. this%ThermoData%HasTHermoData) call this%ThermoData%Init(this,min(1d-3,max(1d-5,minval(times))))
@@ -718,14 +719,14 @@
                 Tbaryon = T%Tb(T%nthermo)
             end if
 
-            outputs(2, ix) = opacity
-            outputs(3, ix) = visibility
+            outputs(2, ix) = opacity(1)
+            outputs(3, ix) = visibility(1)
             outputs(4, ix) = cs2b
             outputs(5, ix) = Tbaryon
-            outputs(6, ix) = dopacity
-            outputs(7, ix) = ddopacity
-            outputs(8, ix) = dvisibility
-            outputs(9, ix) = ddvisibility
+            outputs(6, ix) = dopacity(1)
+            outputs(7, ix) = ddopacity(1)
+            outputs(8, ix) = dvisibility(1)
+            outputs(9, ix) = ddvisibility(1)
         end do
     end associate
 

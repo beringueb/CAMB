@@ -229,6 +229,9 @@
         real(dl) :: Recombination_saha_z !Redshift at which saha OK
         real(dl), private :: NNow, fHe
         real(dl), private :: zrec(Nz),xrec(Nz),dxrec(Nz), Tsrec(Nz) ,dTsrec(Nz), tmrec(Nz),dtmrec(Nz)
+        ! andrea
+        real(dl) x_rayleigh_eff(Nz),dx_rayleigh_eff(Nz)
+        ! andrea
         real(dl), private :: DeltaB,DeltaB_He,Lalpha,mu_H,mu_T
 
         real(dl), private :: HO, Tnow, fu
@@ -271,12 +274,18 @@
     procedure :: Validate => TRecfast_Validate
     procedure :: Init => TRecfast_init
     procedure :: x_e => TRecfast_xe
+    procedure :: x_e2 => TRecfast_xe2
     procedure :: xe_Tm => TRecfast_xe_Tm !ionization fraction and baryon temperature
     procedure :: T_m => TRecfast_tm !baryon temperature
     procedure :: T_s => TRecfast_ts !Spin temperature
     procedure :: Version => TRecfast_version
     procedure :: dDeltaxe_dtau => TRecfast_dDeltaxe_dtau
     procedure :: get_Saha_z => TRecfast_Get_Saha_z
+    procedure :: Recombination_rayleigh_eff => TRecfast_Recombination_rayleigh_eff
+    procedure :: total_scattering_eff => TRecfast_total_scattering_eff
+    !procedure :: acces_zrec => Results_acces_zrec
+    !procedure :: acces_x_rayleigh_eff => Results_acces_x_rayleigh_eff
+    !procedure :: acces_x_rayleigh_eff => Results_acces_dx_rayleigh_eff
     procedure, nopass :: SelfPointer => TRecfast_SelfPointer
 
     end type TRecfast
@@ -329,7 +338,9 @@
     real(dl), parameter :: CL = C*h_P/(k_B*Lalpha)
     real(dl), parameter :: CL_He = C*h_P/(k_B/L_He_2s) !comes from det.bal. of 2s-1s
     real(dl), parameter :: CT = Compton_CT / MPC_in_sec
-
+    ! andrea
+    real(dl), parameter :: HeRayleighFac = 0.1_dl !Rayleigh neutral He scattering cross section as ratio to H 
+    ! andrea
     real(dl), parameter :: Bfact = h_P*C*(L_He_2p-L_He_2s)/k_B
 
     !       Matter departs from radiation when t(Th) > H_frac * t(H)
@@ -455,6 +466,32 @@
         endif
     end associate
     end function TRecfast_xe
+
+    function TRecfast_xe2(this,a)
+    class(TRecfast) :: this
+    real(dl), intent(in) :: a
+    real(dl) zst,z,az,bz,TRecfast_xe2
+    integer ilo,ihi
+
+    z=1/a-1
+    associate(Calc => this%Calc)
+        if (z.ge.Calc%zrec(1)) then
+            TRecfast_xe2=Calc%xrec(1)
+        else
+            if (z.le.Calc%zrec(nz)) then
+                TRecfast_xe2=Calc%xrec(nz)
+            else
+                zst=(zinitial-z)/delta_z
+                ihi= int(zst)
+                ilo = ihi+1
+                az=zst - ihi
+                bz=1-az
+                TRecfast_xe2=az*Calc%xrec(ilo)+bz*Calc%xrec(ihi)+ &
+                    ((az**3-az)*Calc%dxrec(ilo)+(bz**3-bz)*Calc%dxrec(ihi))/6._dl
+            endif
+        endif
+    end associate
+    end function TRecfast_xe2
 
     subroutine TRecfast_xe_Tm(this,a, xe, Tm)
     class(TRecfast) :: this
@@ -678,7 +715,9 @@
             Calc%zrec(i)=zend
             Calc%xrec(i)=x
             Calc%tmrec(i) = Tmat
-
+            ! andrea
+            Calc%x_rayleigh_eff(i)=  1-x_H + HeRayleighFac*(1 - x_He)*Calc%fHe
+            ! andrea
 
             if (Calc%doTspin) then
                 if (Evolve_Ts .and. zend< 1/Do21cm_minev-1 ) then
@@ -700,9 +739,10 @@
 
             !          write (*,'(5E15.5)') zend, Trad, Tmat, Tspin, x
         end do
-
-        call spline_def(Calc%zrec,Calc%xrec,nz,Calc%dxrec)
+        ! and
+        call spline_def(Calc%zrec,Calc%x_rayleigh_eff,nz,Calc%dx_rayleigh_eff)
         call spline_def(Calc%zrec,Calc%tmrec,nz,Calc%dtmrec)
+        ! and
         if (Calc%doTspin) then
             call spline_def(Calc%zrec,Calc%tsrec,nz,Calc%dtsrec)
         end if
@@ -1062,6 +1102,70 @@
     class(TRecfast) :: this
     TRecfast_Get_Saha_z =  this%Calc%recombination_saha_z
     end function
+
+    !function acces_zrec(this, zrec_arr)
+    !class(TRecfast) :: this
+    ! Allocate arr with the same size as zrec
+    !allocate(zrec_arr(size(zrec)))
+    ! Initialize arr with the values of zrec
+    !zrec_arr = this%Calc%zrec
+    !end function
+
+    !function acces_x_rayleigh_eff(this, x_rayleigh_eff_arr)
+    !class(TRecfast) :: this
+    ! Allocate arr with the same size as zrec
+    !allocate(x_rayleigh_eff_arr(size(zrec)))
+    ! Initialize arr with the values of zrec
+    !x_rayleigh_eff_arr = this%Calc%x_rayleigh_eff
+    !end function
+
+    !function acces_dx_rayleigh_eff(this, dx_rayleigh_eff_arr)
+    !class(TRecfast) :: this
+    ! Allocate arr with the same size as zrec
+    !allocate(dx_rayleigh_eff_arr(size(zrec)))
+    ! Initialize arr with the values of zrec
+    !dx_rayleigh_eff_arr = this%Calc%dx_rayleigh_eff
+    !end function
+
+    real(dl) function TRecfast_Recombination_rayleigh_eff(this,a)
+    class(TRecfast) :: this
+    real(dl), intent(in) :: a
+    real(dl) zst,z,az,bz,Recombination_rayleigh_eff
+    integer ilo,ihi
+    z=1/a-1
+    !associate(Calc => this%Calc)
+    if (z.ge.this%Calc%zrec(1)) then
+        !break Recombination_rayleigh_eff
+        TRecfast_Recombination_rayleigh_eff=this%Calc%x_rayleigh_eff(1)
+    else
+        if (z.le.this%Calc%zrec(nz)) then
+            TRecfast_Recombination_rayleigh_eff=this%Calc%x_rayleigh_eff(nz)
+        else
+            zst=(zinitial-z)/delta_z
+            ihi= int(zst)
+            ilo = ihi+1
+            az=zst - int(zst)
+            bz=1-az     
+            TRecfast_Recombination_rayleigh_eff=az*this%Calc%x_rayleigh_eff(ilo)+bz*this%Calc%x_rayleigh_eff(ihi)+ &
+            ((az**3-az)*this%Calc%dx_rayleigh_eff(ilo)+(bz**3-bz)*this%Calc%dx_rayleigh_eff(ihi))/6._dl
+        endif
+    endif
+    !end associate
+    end function TRecfast_Recombination_rayleigh_eff
+
+    real(dl) function TRecfast_total_scattering_eff(this, a)
+    class(TRecfast) :: this
+    real(dl), intent(in) :: a
+    real(dl) :: a2, total_scattering_eff
+
+    if (rayleigh_back_approx) then
+        a2 = a**2
+        TRecfast_total_scattering_eff = this%x_e(a) + this%recombination_rayleigh_eff(a) * ( &
+            min(1._dl, av_freq_factors(1) / a2**2 + av_freq_factors(2) / a2**3 + av_freq_factors(3) / a2**4) )
+    else
+        TRecfast_total_scattering_eff = this%x_e(a)
+    end if
+    end function TRecfast_total_scattering_eff
 
 
     subroutine TRecfast_SelfPointer(cptr,P)

@@ -105,6 +105,10 @@
     integer :: max_bessels_l_index  = 1000000
     real(dl) :: max_bessels_etak = 1000000*2
 
+    ! andrea
+    real(dl), dimension(:,:,:,:), allocatable :: iCl_tensor_array
+    ! andrea
+
     Type(TTimeSources) , pointer :: ThisSources => null()
     Type(TTimeSources), allocatable, target :: TempSources
 
@@ -316,6 +320,10 @@
 
     if (CP%WantTensors .and. global_error_flag==0) then
         allocate(iCl_Tensor(State%CLdata%CTransTens%ls%nl,CT_Temp:CT_Cross), source=0._dl)
+        ! andrea
+        allocate(iCl_Tensor_array(State%CLdata%CTransTens%ls%nl,CT_Temp:CT_Cross,num_cmb_freq,num_cmb_freq))
+        iCl_Tensor_array = 0
+        ! andrea
         call CalcTensCls(State%CLdata%CTransTens,GetInitPowerArrayTens)
         if (DebugMsgs .and. Feedbacklevel > 0) write (*,*) 'CalcTensCls'
     end if
@@ -748,8 +756,13 @@
             ThisSources%NonCustomSourceNum = ThisSources%SourceNum
             State%Scalar_C_last = C_Cross
         end if
+         ! andrea
+        ThisSources%SourceNum = ThisSources%SourceNum + num_cmb_freq*2
+        ! andrea
     else
-        ThisSources%SourceNum=3
+        ! andrea
+        ThisSources%SourceNum=3*(num_cmb_freq+1)
+        ! andrea
         ThisSources%NonCustomSourceNum = ThisSources%SourceNum
     end if
 
@@ -974,6 +987,11 @@
     real(dl) tau,tol1,tauend, taustart
     integer j,ind,itf
     real(dl) c(24),w(EV%nvar,9), y(EV%nvar), sources(ThisSources%SourceNum)
+    integer k1, k2
+    character(len=100) :: filename
+    ! andrea
+    !integer ix_off, f_i
+    ! andrea
 
     w=0
     y=0
@@ -1010,6 +1028,11 @@
 
             call output(EV,y,j, tau,sources, CP%CustomSources%num_custom_sources)
             ThisSources%LinearSrc(EV%q_ix,:,j)=sources
+            !if (EV%q_ix == 100) then
+            !    if (j== 29) then
+            !        write(*,*) 'sources(6)', sources(6)
+            !    end if
+            !end if
 
             !     Calculation of transfer functions.
 101         if (CP%WantTransfer.and.itf <= State%num_transfer_redshifts) then
@@ -1037,6 +1060,32 @@
         end if
     end do !time step loop
 
+    !if (EV%q_ix == 100) then
+    !    filename = 'check_array.dat'
+
+        ! Open the file for writing
+    !    open(unit=10, file=filename, status='replace', action='write')
+
+        ! Write the array values to the file
+        ! Write the array values along with their row indices to the file
+    !    do k1 = 2, State%TimeSteps%npoints
+    !        write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
+    !        do k2 = 1, 14
+    !            if (k2 < 14) then
+    !                write(10, '(F40.20, A)', advance='no') ThisSources%LinearSrc(EV%q_ix, k2, k1), CHAR(9) ! Write value followed by a tab
+    !            else
+    !                write(10, '(F40.20)') ThisSources%LinearSrc(EV%q_ix, k2, k1) ! Write last value in the row without a tab
+    !            end if
+    !        end do
+       !    write(10, *) ! End the line after each row
+    !    end do
+
+        ! Close the file
+    !    close(10)
+
+    !    print *, 'Array values written to ', trim(filename)
+    !end if
+
     end subroutine CalcScalarSources
 
 
@@ -1046,6 +1095,8 @@
     real(dl) tau,tol1,tauend, taustart
     integer j,ind
     real(dl) c(24),wt(EV%nvart,9), yt(EV%nvart)
+    real(dl) outT(nscatter),outE(nscatter),outB(nscatter)
+    integer f_i
 
     call initialt(EV,yt, taustart)
 
@@ -1061,8 +1112,12 @@
         else
             call GaugeInterface_EvolveTens(EV,tau,yt,tauend,tol1,ind,c,wt)
 
-            call outputt(EV,yt,EV%nvart,tau,ThisSources%LinearSrc(EV%q_ix,CT_Temp,j),&
-                ThisSources%LinearSrc(EV%q_ix,CT_E,j),ThisSources%LinearSrc(EV%q_ix,CT_B,j))
+            call outputt(EV,yt,EV%nvart,tau,outT,outE,outB)
+            ! and
+            do f_i=1,nscatter
+                ThisSources%LinearSrc(EV%q_ix,1+(f_i-1)*3:3+(f_i-1)*3,j) = [outT(f_i),outE(f_i),outB(f_i)]
+            ! and
+            end do
         end if
     end do
 
@@ -1496,6 +1551,7 @@
             tmin = State%TimeSteps%points(2)
         else
             xlmax1=80*ThisCT%ls%l(j)*BessIntBoost
+            if (num_cmb_freq>0 .and. ThisCT%ls%l(j) <200) xlmax1=xlmax1*8
             if (State%num_redshiftwindows>0 .and. CP%WantScalars) then
                 xlmax1=80*ThisCT%ls%l(j)*8*BessIntBoost !Have to be careful if sharp spikes due to late time sources
             end if
@@ -1548,6 +1604,9 @@
                         sums(1) = sums(1) + IV%Source_q(n,1)*J_l
                         sums(2) = sums(2) + IV%Source_q(n,2)*J_l
                         sums(3) = sums(3) + IV%Source_q(n,3)*J_l
+                        ! and
+                        sums(4:ThisSources%SourceNum) = sums(4:ThisSources%SourceNum) + IV%Source_q(n,4:ThisSources%SourceNum)*J_l
+                        ! and
                     end do
                 else
                     if (State%num_redshiftwindows>0) then
@@ -1637,9 +1696,12 @@
                 end if
             end if
         end if
-
+        
+        !write(*,*) 'sums', sums
         ThisCT%Delta_p_l_k(:,j,IV%q_ix) = ThisCT%Delta_p_l_k(:,j,IV%q_ix) + sums
     end do
+
+    !write(*,*) 'Delta_p_l_k', ThisCT%Delta_p_l_k(5, 40, 40)
 
     end subroutine DoFlatIntegration
 
@@ -2223,8 +2285,10 @@
     real(dl) apowers
     real(dl) dlnk, ell, ctnorm, dbletmp, Delta1, Delta2
     real(dl), allocatable :: ks(:), dlnks(:), pows(:)
-    real(dl) fac(3 + State%num_redshiftwindows + State%CP%CustomSources%num_custom_sources)
+    real(dl) fac(3 + State%num_redshiftwindows + State%CP%CustomSources%num_custom_sources + num_cmb_freq*2)
     integer nscal, i
+    integer k1, k2
+    character(len=100) :: filename
 
     allocate(ks(CTrans%q%npoints),dlnks(CTrans%q%npoints), pows(CTrans%q%npoints))
     do q_ix = 1, CTrans%q%npoints
@@ -2246,6 +2310,7 @@
 #endif
     do j=1,CTrans%ls%nl
         !Integrate dk/k Delta_l_q**2 * Power(k)
+         !write(*,*) 'youpoo'
         ell = real(CTrans%ls%l(j),dl)
         if (j<= CTrans%max_index_nonlimber) then
             do q_ix = 1, CTrans%q%npoints
@@ -2260,11 +2325,10 @@
                         apowers*CTrans%Delta_p_l_k(1,j,q_ix)*CTrans%Delta_p_l_k(2,j,q_ix)*dlnk
 
                     if (CTrans%NumSources>2 .and. State%CP%want_cl_2D_array) then
-
-                        do w_ix=1,3 + State%num_redshiftwindows
+                        do w_ix=1,3 + State%num_redshiftwindows + num_cmb_freq*2
                             Delta1= CTrans%Delta_p_l_k(w_ix,j,q_ix)
-                            if (w_ix>3) then
-                                associate (Win => State%Redshift_w(w_ix - 3))
+                            if (w_ix>3 + num_cmb_freq*2) then
+                                associate (Win => State%Redshift_w(w_ix - 3 - num_cmb_freq*2))
                                     if (Win%kind == window_lensing) &
                                         Delta1 = Delta1 / 2 * ell * (ell + 1)
                                     if (Win%kind == window_counts .and. CP%SourceTerms%counts_lensing) then
@@ -2276,17 +2340,18 @@
                                     end if
                                 end associate
                             end if
-                            do w_ix2=w_ix,3 + State%num_redshiftwindows
-                                if (w_ix2>= 3.and. w_ix>=3) then
-                                    !Skip if the auto or cross-correlation is included in direct Limber result
-                                    !Otherwise we need to include the sources e.g. to get counts-Temperature correct
-                                    if (CTrans%limber_l_min(w_ix2)/= 0 .and. j>=CTrans%limber_l_min(w_ix2) &
-                                        .and. CTrans%limber_l_min(w_ix)/= 0 .and. j>=CTrans%limber_l_min(w_ix)) cycle
-
+                            do w_ix2=1,3 + State%num_redshiftwindows + num_cmb_freq*2
+                                if (w_ix>nscatter*2+1 .and. w_ix2==3) then
+                                    if (w_ix2>nscatter*2+1 .or. w_ix2==3) then
+                                        !Skip if the auto or cross-correlation is included in direct Limber result
+                                        !Otherwise we need to include the sources e.g. to get counts-Temperature correct
+                                        if (CTrans%limber_l_min(w_ix2)/= 0 .and. j>=CTrans%limber_l_min(w_ix2) &
+                                            .and. CTrans%limber_l_min(w_ix)/= 0 .and. j>=CTrans%limber_l_min(w_ix)) cycle
+                                    end if
                                 end if
                                 Delta2 = CTrans%Delta_p_l_k(w_ix2, j, q_ix)
-                                if (w_ix2 > 3) then
-                                    associate (Win => State%Redshift_w(w_ix2 - 3))
+                                if (w_ix2 > 3 + num_cmb_freq*2) then
+                                    associate (Win => State%Redshift_w(w_ix2 - 3 - num_cmb_freq*2))
                                         if (Win%kind == window_lensing) &
                                             Delta2 = Delta2 / 2 * ell * (ell + 1)
                                         if (Win%kind == window_counts .and. CP%SourceTerms%counts_lensing) then
@@ -2298,6 +2363,9 @@
                                         end if
                                     end associate
                                 end if
+                                !if ((w_ix == 1) .and. (w_ix2 == 5)) then
+                                !    write(*,*) 'w_ix, w_ix2', Delta1,Delta2,apowers,dlnk
+                                !end if
                                 iCl_Array(j,w_ix,w_ix2) = iCl_Array(j,w_ix,w_ix2)+Delta1*Delta2*apowers*dlnk
                             end do
                         end do
@@ -2317,7 +2385,6 @@
                             end do
                         end if
                     end if
-
                     if (CTrans%NumSources>2 ) then
                         if (CP%SourceTerms%limber_phi_lmin==0 .or.  &
                             CTrans%limber_l_min(3)== 0 .or. j<CTrans%limber_l_min(3)) then
@@ -2333,7 +2400,6 @@
             end do
 
         end if !limber (j<= max_bessels_l_index)
-
         !Output l(l+1)C_l/OutputDenominator
         ctnorm=(ell*ell-1)*(ell+2)*ell
         dbletmp=(ell*(ell+1))/OutputDenominator*const_fourpi
@@ -2359,7 +2425,6 @@
                 end do
             end do
         end if
-
         iCl_scalar(j,C_Temp)  =  iCl_scalar(j,C_Temp)*dbletmp
         iCl_scalar(j,C_E) =  iCl_scalar(j,C_E)*dbletmp*ctnorm
         iCl_scalar(j,C_Cross) =  iCl_scalar(j,C_Cross)*dbletmp*sqrt(ctnorm)
@@ -2376,6 +2441,30 @@
 #ifndef __INTEL_COMPILER
     !$OMP END PARALLEL DO
 #endif
+    
+       ! filename = 'cls_array.dat'
+
+        ! Open the file for writing
+       ! open(unit=10, file=filename, status='replace', action='write')
+
+        ! Write the array values to the file
+        ! Write the array values along with their row indices to the file
+        !do k1 = 1, CTrans%ls%nl
+        !    write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
+        !    do k2 = 1,14
+        !        if (k2 < 14) then
+        !            write(10, '(F40.20, A)', advance='no') iCl_Array(k1, 1, k2), CHAR(9) ! Write value followed by a tab
+        !        else
+        !            write(10, '(F40.20)') iCl_Array(k1, 1, k2) ! Write last value in the row without a tab
+        !        end if
+        !    end do
+        !    write(10, *) ! End the line after each row
+        !end do
+
+        ! Close the file
+        !close(10)
+
+        !print *, 'Array values written to ', trim(filename)
 
     end subroutine CalcScalCls
 
@@ -2468,6 +2557,8 @@
     real(dl) ctnorm,dbletmp
     real(dl) pows(CTrans%q%npoints)
     real(dl)  ks(CTrans%q%npoints),measures(CTrans%q%npoints)
+    real(dl) Delta1, Delta2
+    integer f1,f2
 
     !For tensors we want Integral dnu/nu (nu^2-3)/(nu^2-1) Delta_l_k^2 P(k) for State%closed
 
@@ -2498,15 +2589,30 @@
 
                 iCl_tensor(j,CT_cross ) = iCl_tensor(j,CT_cross) &
                     +apowert*CTrans%Delta_p_l_k(CT_Temp,j,q_ix)*CTrans%Delta_p_l_k(CT_E,j,q_ix)*measure
+                do f1=1, num_cmb_freq
+                    do f2=1, num_cmb_freq
+                        iCl_tensor_array(j, CT_Temp:CT_B, f1, f2) = iCl_tensor_array(j, CT_Temp:CT_B, f1, f2) + &
+                        apowert * CTrans%Delta_p_l_k(CT_Temp + (f1) * 3:CT_B + (f1) * 3, j, q_ix) * &
+                        CTrans%Delta_p_l_k(CT_Temp + (f2) * 3:CT_B + (f2) * 3, j, q_ix) * measure
+
+                        iCl_tensor_array(j, CT_cross, f1, f2) = iCl_tensor_array(j, CT_cross, f1, f2) + &
+                        apowert * CTrans%Delta_p_l_k(CT_Temp + f1 * 3, j, q_ix) * &
+                        CTrans%Delta_p_l_k(CT_E + f2 * 3, j, q_ix) * measure
+                    end do
+                end do
             end if
         end do
 
         ctnorm=(CTrans%ls%l(j)*CTrans%ls%l(j)-1)*real((CTrans%ls%l(j)+2)*CTrans%ls%l(j),dl)
         dbletmp=(CTrans%ls%l(j)*(CTrans%ls%l(j)+1))/OutputDenominator*const_pi/4
         iCl_tensor(j, CT_Temp) = iCl_tensor(j, CT_Temp)*dbletmp*ctnorm
+        iCl_tensor_array(j, CT_Temp,:,:) = iCl_tensor_array(j, CT_Temp,:,:)*dbletmp*ctnorm
+        iCl_tensor_array(j, CT_Temp,:,:) = iCl_tensor_array(j, CT_Temp,:,:)*dbletmp*ctnorm
         if (CTrans%ls%l(j)==1) dbletmp=0
-        iCl_tensor(j, CT_E:CT_B) = iCl_tensor(j, CT_E:CT_B)*dbletmp
-        iCl_tensor(j, CT_Cross)  = iCl_tensor(j, CT_Cross)*dbletmp*sqrt(ctnorm)
+            iCl_tensor(j, CT_E:CT_B) = iCl_tensor(j, CT_E:CT_B)*dbletmp
+            iCl_tensor(j, CT_Cross)  = iCl_tensor(j, CT_Cross)*dbletmp*sqrt(ctnorm)
+            iCl_tensor_array(j, CT_E:CT_B,:,:) = iCl_tensor_array(j, CT_E:CT_B,:,:)*dbletmp
+            iCl_tensor_array(j, CT_Cross,:,:)  = iCl_tensor_array(j, CT_Cross,:,:)*dbletmp*sqrt(ctnorm)
     end do
     !$OMP END PARALLEL DO
 
@@ -2562,6 +2668,10 @@
     subroutine InterpolateCls()
     implicit none
     integer i,j
+    ! andrea
+    integer f1,f2
+    real(dl), allocatable :: Cl_tensor_freqs(:,:,:,:)
+    ! andrea
     integer, dimension(2,2), parameter :: ind = reshape( (/ 1,3,3,2 /), shape(ind))
     !use verbose form above for gfortran consistency  [[1,3],[3,2]]
 
@@ -2575,13 +2685,20 @@
             end do
 
             if (State%CLdata%CTransScal%NumSources>2 .and. State%CP%want_cl_2D_array) then
-                do i=1,3+State%num_redshiftwindows + CP%CustomSources%num_custom_sources
-                    do j=i,3+State%num_redshiftwindows + CP%CustomSources%num_custom_sources
+                do i=1,3+State%num_redshiftwindows + CP%CustomSources%num_custom_sources + num_cmb_freq*2
+                    do j=i,3+State%num_redshiftwindows + CP%CustomSources%num_custom_sources + num_cmb_freq*2
                         if (i<3 .and. j<3) then
                             State%CLData%Cl_scalar_array(:,i,j) = State%CLData%Cl_scalar(:, ind(i,j))
                         else
-                            call lSet%InterpolateClArr(iCl_array(1,i,j), &
-                                State%CLData%Cl_scalar_array(lSet%lmin, i,j))
+                             if (i <= 3 + num_cmb_freq*2 .and. &
+                            j <= 3 + num_cmb_freq*2 .and. &
+                            i > 3 .and. j > 3 .and. (i <= 5 .and. j <= 5 .or. .not. rayleigh_diff)) then
+                                call lSet%InterpolateClArrTemplated(iCl_array(1,i,j), &
+                                    State%CLData%Cl_scalar_array(lSet%lmin, i,j),lSet%nl, ind(1+mod(i-4,2), 1+mod(j-4,2)))
+                            else
+                                call lSet%InterpolateClArr(iCl_array(1,i,j), &
+                                    State%CLData%Cl_scalar_array(lSet%lmin, i,j))
+                            end if
                         end if
                         if (i/=j) State%CLData%Cl_scalar_array(:,j,i) = State%CLData%Cl_scalar_array(:,i,j)
                     end do
@@ -2603,6 +2720,17 @@
             do i = CT_Temp, CT_Cross
                 call ls%InterpolateClArr(iCl_tensor(1,i),State%CLData%Cl_tensor(ls%lmin, i))
             end do
+            ! andrea
+        allocate(State%CLData%Cl_tensor_freqs(ls%lmin:CP%Max_l_tensor,1:4,num_cmb_freq,num_cmb_freq))
+        do f1=1,num_cmb_freq
+            do f2=1,num_cmb_freq
+                do i = CT_Temp, CT_Cross
+                    call ls%InterpolateClArr(iCl_tensor_array(1,i,f1,f2), &
+                         State%CLData%Cl_tensor_freqs(ls%lmin, i, f1,f2))
+                end do
+            end do
+        end do
+        ! andrea
         end associate
     end if
 

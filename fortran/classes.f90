@@ -105,6 +105,8 @@
     procedure :: Version => TRecombinationModel_version
     procedure :: dDeltaxe_dtau => TRecombinationModel_dDeltaxe_dtau
     procedure :: get_Saha_z => TRecombinationModel_Get_Saha_z
+    procedure :: Recombination_rayleigh_eff => TRecombinationModel_Recombination_rayleigh_eff
+    procedure :: total_scattering_eff => TRecombinationModel_total_scattering_eff
     end type
 
     Type, extends(TCambComponent) :: TReionizationModel
@@ -267,6 +269,26 @@
     TRecombinationModel_xe=0
 
     end function TRecombinationModel_xe
+
+    function TRecombinationModel_Recombination_rayleigh_eff(this,a)
+    class(TRecombinationModel) :: this
+    real(dl), intent(in) :: a
+    real(dl) TRecombinationModel_Recombination_rayleigh_eff
+
+    call MpiStop('TRecombinationModel_Recombination_rayleigh_eff')
+    TRecombinationModel_Recombination_rayleigh_eff=0
+
+    end function TRecombinationModel_Recombination_rayleigh_eff
+
+    function TRecombinationModel_total_scattering_eff(this,a)
+    class(TRecombinationModel) :: this
+    real(dl), intent(in) :: a
+    real(dl) TRecombinationModel_total_scattering_eff
+
+    call MpiStop('TRecombinationModel_total_scattering_eff')
+    TRecombinationModel_total_scattering_eff=0
+
+    end function TRecombinationModel_total_scattering_eff
 
     subroutine TRecombinationModel_xe_Tm(this,a, xe, Tm)
     !Not required to implement, but may be able to optimize
