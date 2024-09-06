@@ -29,14 +29,17 @@ def get_results(params):
     :param params: :class:`.model.CAMBparams` instance
     :return: :class:`~.results.CAMBdata` instance
     """
+    print(get_results)
     if isinstance(params, dict):
+        print('Oui ?')
         params = set_params(**params)
     res = CAMBdata()
     if _debug_params:
+        print('Peut-être ?')
         print(params)
+    print('Non ??')
     res.calc_power_spectra(params)
     return res
-
 
 def get_transfer_functions(params, only_time_sources=False):
     """

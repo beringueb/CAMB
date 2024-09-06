@@ -310,12 +310,18 @@ class CAMBdata(F2003Class):
                                     non-linear scaling
         :return: non-zero if error, zero if OK
         """
+        print('CT Is Problems 0')
         self._check_params(params)
+        print('CT Is Problems 1')
         if not (only_transfers or only_time_sources):
+            print('CT Is Problems 2')
             self._check_powers(params)
+            print('CT Is Problems 3')
         if CAMBdata_gettransfers(byref(self), byref(params), byref(c_int(1 if only_transfers else 0)),
                                  byref(c_int(1 if only_time_sources else 0))):
+            print('CT Is Problems 4')
             config.check_global_error('calc_transfer')
+        print('CT Is Problems End')
 
     def _check_powers(self, params=None):
         if params is None:
@@ -332,12 +338,20 @@ class CAMBdata(F2003Class):
         :param params: optional :class:`~.model.CAMBparams` instance with parameters to use
 
         """
+        print('CPS Is Problems 0')
         if params is not None:
+            print('CPS Is Problems 1')
             self.calc_transfers(params, only_transfers=False)
+            print('CPS Is Problems 2')
         else:
+            print('CPS Is Problems 3')
             self._check_powers()
+            print('Pre-fortran')
             CAMBdata_transferstopowers(byref(self))
+            print('Post-fortran')
             config.check_global_error()
+        print('CPS Is Problems End')
+
 
     def power_spectra_from_transfer(self, initial_power_params=None, silent=False):
         """
@@ -361,7 +375,7 @@ class CAMBdata(F2003Class):
         if initial_power_params:
             self.Params.set_initial_power(initial_power_params)
         self._check_powers()
-        CAMBdata_transferstopowers(byref(self))
+        #CAMBdata_transferstopowers(byref(self))
         config.check_global_error()
 
     def _CMB_unit(self, CMB_unit):
@@ -423,7 +437,7 @@ class CAMBdata(F2003Class):
 
     def get_cmb_power_spectra(self, params=None, lmax=None,
                               spectra=('total', 'unlensed_scalar', 'unlensed_total', 'lensed_scalar', 'tensor',
-                                       'lens_potential'), CMB_unit=None, raw_cl=False):
+                                       'lens_potential', 'lensed_scalar_auto_f1', 'lensed_scalar_auto_f2', 'lensed_scalar_cross_f1_f2'), CMB_unit=None, raw_cl=False):
         r"""
         Get CMB power spectra, as requested by the 'spectra' argument. All power spectra are
         :math:`\ell(\ell+1)C_\ell/2\pi` self-owned numpy arrays (0..lmax, 0..3), where 0..3 index
@@ -444,9 +458,11 @@ class CAMBdata(F2003Class):
         :param raw_cl: return :math:`C_\ell` rather than :math:`\ell(\ell+1)C_\ell/2\pi`
         :return: dictionary of power spectrum arrays, indexed by names of requested spectra
         """
+
         P = {}
         if params is not None:
             self.calc_power_spectra(params)
+        print('Power Spectra this stage ?')
         lmax = self._lmax_setting(lmax)
         for spectrum in spectra:
             P[spectrum] = getattr(self, 'get_' + spectrum + '_cls')(lmax, CMB_unit=CMB_unit,
@@ -1125,6 +1141,57 @@ class CAMBdata(F2003Class):
         self._scale_cls(res, CMB_unit, raw_cl)
         return res
 
+    def get_lensed_scalar_auto_f1_cls(self, lmax=None, CMB_unit=None, raw_cl=False):
+        r"""
+        Get lensed scalar CMB power spectra. Must have already calculated power spectra.
+
+        :param lmax: lmax to output to
+        :param CMB_unit: scale results from dimensionless. Use 'muK' for :math:`\mu K^2` units for CMB :math:`C_\ell`
+        :param raw_cl: return :math:`C_\ell` rather than :math:`\ell(\ell+1)C_\ell/2\pi`
+        :return: numpy array CL[0:lmax+1,0:4], where 0..3 indexes TT, EE, BB, TE.
+        """
+
+        lmax = self._lmax_setting(lmax)
+        res = np.empty((lmax + 1, 4))
+        opt = c_int(lmax)
+        CAMB_SetLensedScalCls_Auto_f1(byref(self), byref(opt), res)
+        self._scale_cls(res, CMB_unit, raw_cl)
+        return res
+
+    def get_lensed_scalar_auto_f2_cls(self, lmax=None, CMB_unit=None, raw_cl=False):
+        r"""
+        Get lensed scalar CMB power spectra. Must have already calculated power spectra.
+
+        :param lmax: lmax to output to
+        :param CMB_unit: scale results from dimensionless. Use 'muK' for :math:`\mu K^2` units for CMB :math:`C_\ell`
+        :param raw_cl: return :math:`C_\ell` rather than :math:`\ell(\ell+1)C_\ell/2\pi`
+        :return: numpy array CL[0:lmax+1,0:4], where 0..3 indexes TT, EE, BB, TE.
+        """
+
+        lmax = self._lmax_setting(lmax)
+        res = np.empty((lmax + 1, 4))
+        opt = c_int(lmax)
+        CAMB_SetLensedScalCls_Auto_f2(byref(self), byref(opt), res)
+        self._scale_cls(res, CMB_unit, raw_cl)
+        return res
+
+    def get_lensed_scalar_cross_f1_f2_cls(self, lmax=None, CMB_unit=None, raw_cl=False):
+        r"""
+        Get lensed scalar CMB power spectra. Must have already calculated power spectra.
+
+        :param lmax: lmax to output to
+        :param CMB_unit: scale results from dimensionless. Use 'muK' for :math:`\mu K^2` units for CMB :math:`C_\ell`
+        :param raw_cl: return :math:`C_\ell` rather than :math:`\ell(\ell+1)C_\ell/2\pi`
+        :return: numpy array CL[0:lmax+1,0:4], where 0..3 indexes TT, EE, BB, TE.
+        """
+
+        lmax = self._lmax_setting(lmax)
+        res = np.empty((lmax + 1, 4))
+        opt = c_int(lmax)
+        CAMB_SetLensedScalCls_Cross_f1_f2(byref(self), byref(opt), res)
+        self._scale_cls(res, CMB_unit, raw_cl)
+        return res
+
     def get_lens_potential_cls(self, lmax=None, CMB_unit=None, raw_cl=False):
         r"""
         Get lensing deflection angle potential power spectrum, and cross-correlation with T and E. Must have already
@@ -1661,6 +1728,9 @@ CAMB_SetUnlensedCls = camblib.__handles_MOD_camb_setunlensedcls
 CAMB_SetLensPotentialCls = camblib.__handles_MOD_camb_setlenspotentialcls
 CAMB_SetUnlensedScalCls = camblib.__handles_MOD_camb_setunlensedscalcls
 CAMB_SetLensedScalCls = camblib.__handles_MOD_camb_setlensedscalcls
+CAMB_SetLensedScalCls_Auto_f1 = camblib.__handles_MOD_camb_setlensedscalcls_auto_f1
+CAMB_SetLensedScalCls_Auto_f2 = camblib.__handles_MOD_camb_setlensedscalcls_auto_f2
+CAMB_SetLensedScalCls_Cross_f1_f2 = camblib.__handles_MOD_camb_setlensedscalcls_cross_f1_f2
 CAMB_SetTensorCls = camblib.__handles_MOD_camb_settensorcls
 
 _set_cl_args = [POINTER(CAMBdata), int_arg, numpy_1d]
@@ -1671,6 +1741,9 @@ CAMB_SetLensPotentialCls.argtypes = _set_cl_args
 CAMB_SetUnlensedScalCls.argtypes = _set_cl_args
 CAMB_SetTensorCls.argtypes = _set_cl_args
 CAMB_SetLensedScalCls.argtypes = _set_cl_args
+CAMB_SetLensedScalCls_Auto_f1.argtypes = _set_cl_args
+CAMB_SetLensedScalCls_Auto_f2.argtypes = _set_cl_args
+CAMB_SetLensedScalCls_Cross_f1_f2.argtypes = _set_cl_args
 
 CAMB_SetUnlensedScalarArray = camblib.__handles_MOD_camb_setunlensedscalararray
 CAMB_SetUnlensedScalarArray.argtypes = [POINTER(CAMBdata), int_arg, ndpointer(c_double, flags='F_CONTIGUOUS', ndim=3),

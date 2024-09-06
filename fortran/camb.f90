@@ -58,13 +58,14 @@
     type(CAMBparams) P
     logical :: call_again
 
+    write(*,*) 'Is get_result ok ?'
+
     global_error_flag = 0
     call_again = .false.
     call OutData%Free()
     call SetActiveState(OutData)
     OutData%HasScalarTimeSources= DefaultFalse(onlytimesources)
     OutData%OnlyTransfer = DefaultFalse(onlytransfer) .or. OutData%HasScalarTimeSources
-
     !Vector and tensors first, so at end time steps in state are for scalars
     if (Params%WantCls .and. Params%WantTensors) then
         P=Params
@@ -80,7 +81,7 @@
         end if
         call_again = .true.
     end if
-
+    write(*,*) 'Get_result 1?'
     if (Params%WantCls .and. Params%WantVectors) then
         P=Params
         P%WantTransfer = .false.
@@ -95,8 +96,9 @@
         end if
         call_again = .true.
     end if
-
+    write(*,*) 'Get_result 2?'
     if (Params%WantCls .and. Params%WantScalars) then
+        write(*,*) 'Get_result 2 in ?'
         P = Params
         P%Max_eta_k=max(min(P%max_l,3000)*2.5_dl,P%Max_eta_k)
         P%WantTensors = .false.
@@ -106,15 +108,16 @@
             P%WantTransfer  = .true.
         end if
         call OutData%SetParams(P)
+        write(*,*) '2 Pre-main ?'
         if (global_error_flag==0) call cmbmain
+        write(*,*) '2 Post-main ?'
         if (global_error_flag/=0) then
             if (present(error)) error =global_error_flag
             return
         end if
         call_again = .true.
     end if
-
-
+    write(*,*) 'Get_result 3?'
     if (Params%WantTransfer .and. .not. (Params%WantCls .and. Params%WantScalars)) then
         P=Params
         P%WantCls = .false.
@@ -128,6 +131,7 @@
             return
         end if
     end if
+    write(*,*) 'Get_result 4?'
     OutData%CP%WantCls = Params%WantCls
     OutData%CP%WantScalars = Params%WantScalars
     OutData%CP%WantTensors = Params%WantTensors
@@ -137,17 +141,16 @@
     OutData%CP%Reion%Reionization = Params%Reion%Reionization
     OutData%CP%Transfer%high_precision = Params%Transfer%high_precision
     OutData%CP%WantDerivedParameters = Params%WantDerivedParameters
-
+    write(*,*) 'Get_result 5?'
     if (.not. OutData%OnlyTransfer .and. Params%WantCls .and. Params%WantScalars) then
         if (Params%DoLensing .and. global_error_flag==0) then
             call lens_Cls(OutData)
         end if
-
         if (do_bispectrum .and. global_error_flag==0) &
             call GetBispectrum(OutData,OutData%CLData%CTransScal)
     end if
+    write(*,*) 'Get_result 6?'
     if (global_error_flag/=0 .and. present(error)) error =global_error_flag
-
     end subroutine CAMB_GetResults
 
 
@@ -166,8 +169,9 @@
     do l=2, lmax
         if (State%CP%WantScalars .and. l<= State%CP%Max_l) then
             if (State%CP%DoLensing) then
-                if (l<=State%CLData%lmax_lensed) &
+                if (l<=State%CLData%lmax_lensed) then
                     Cls(l,1:4) = State%CLData%Cl_lensed(l, CT_Temp:CT_Cross)
+                end if
             else
                 Cls(l,1:2) = State%CLData%Cl_scalar(l, C_Temp:C_E)
                 Cls(l,4) = State%CLData%Cl_scalar(l, C_Cross)

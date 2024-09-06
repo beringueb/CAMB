@@ -503,6 +503,51 @@
 
     end subroutine CAMB_SetlensedScalCls
 
+    subroutine CAMB_SetlensedScalCls_Auto_f1(State,lmax, lensed_Cls)
+    type(CAMBdata) State
+    integer, intent(IN) :: lmax
+    real(dl), intent(OUT) :: lensed_Cls(4, 0:lmax)
+    integer lmx
+
+    lensed_Cls = 0
+    if (State%CP%WantScalars .and. State%CP%DoLensing) then
+        lmx = min(lmax,State%CLData%lmax_lensed)
+        lensed_Cls(1:4,State%CP%Min_l:lmx) = &
+            transpose(State%CLData%Cl_lensed_freqs(State%CP%Min_l:lmx, CT_Temp:CT_Cross, 2, 2))
+    end if
+
+    end subroutine CAMB_SetlensedScalCls_Auto_f1
+
+    subroutine CAMB_SetlensedScalCls_Auto_f2(State,lmax, lensed_Cls)
+    type(CAMBdata) State
+    integer, intent(IN) :: lmax
+    real(dl), intent(OUT) :: lensed_Cls(4, 0:lmax)
+    integer lmx
+
+    lensed_Cls = 0
+    if (State%CP%WantScalars .and. State%CP%DoLensing) then
+        lmx = min(lmax,State%CLData%lmax_lensed)
+        lensed_Cls(1:4,State%CP%Min_l:lmx) = &
+            transpose(State%CLData%Cl_lensed_freqs(State%CP%Min_l:lmx, CT_Temp:CT_Cross, 3, 3))
+    end if
+
+    end subroutine CAMB_SetlensedScalCls_Auto_f2
+
+    subroutine CAMB_SetlensedScalCls_Cross_f1_f2(State,lmax, lensed_Cls)
+    type(CAMBdata) State
+    integer, intent(IN) :: lmax
+    real(dl), intent(OUT) :: lensed_Cls(4, 0:lmax)
+    integer lmx
+
+    lensed_Cls = 0
+    if (State%CP%WantScalars .and. State%CP%DoLensing) then
+        lmx = min(lmax,State%CLData%lmax_lensed)
+        lensed_Cls(1:4,State%CP%Min_l:lmx) = &
+            transpose(State%CLData%Cl_lensed_freqs(State%CP%Min_l:lmx, CT_Temp:CT_Cross, 2, 3))
+    end if
+
+    end subroutine CAMB_SetlensedScalCls_Cross_f1_f2
+
     subroutine CAMB_SetTensorCls(State,lmax, tensor_Cls)
     Type(CAMBdata) :: State
     integer, intent(IN) :: lmax
@@ -596,7 +641,7 @@
         EV%OutputSources => sources
         EV%OutputStep = 0
         if (ncustomsources>0) EV%CustomSources => custom_sources
-        call derivs(EV,EV%ScalEqsToPropagate,tau,y,yprime,j)
+        call derivs(EV,EV%ScalEqsToPropagate,tau,y,yprime)
         nullify(EV%OutputTransfer, EV%OutputSources, EV%CustomSources)
         call State%ThermoData%Values(tau,a, cs2,opacity)
         outputs(1:Transfer_Max, j, EV%q_ix) = Arr

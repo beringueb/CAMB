@@ -92,10 +92,12 @@
 
     lmax_extrap = State%CP%Max_l - lensed_convolution_margin + 750
     lmax_extrap = min(lmax_extrap_highl,lmax_extrap)
+
     do l= State%CP%min_l,State%CP%max_l
         ! Cl_scalar(l,1,C_Phi) is l^4 C_phi_phi
         CPP(l) = State%CLdata%Cl_scalar(l,C_Phi)*(l+1)**2/real(l,dl)**2/const_twopi
     end do
+
     call CorrFuncFullSkyImpl(State, State%ClData, State%ClData, CPP, &
         State%CP%min_l,max(lmax_extrap,State%CP%max_l))
 
@@ -170,9 +172,7 @@
     logical :: short_integral_range
     real(dl) range_fac
     logical, parameter :: approx = .false.
-    ! andrea
     integer f_i_1,f_i_2
-    ! andrea
     real(dl) theta_cut(lmax), LensAccuracyBoost
     integer k1, k2
     character(len=100) :: filename
@@ -241,6 +241,7 @@
         allocate(ddcontribs(lmax,4),corrcontribs(lmax,4))
 
         if (nscatter>1) then
+            if (allocated(CLData%Cl_lensed_freqs)) deallocate(CLData%Cl_lensed_freqs)
             allocate(CLData%Cl_lensed_freqs(lmin:CLout%lmax_lensed,1:4,num_cmb_freq,num_cmb_freq))
         end if
 
@@ -252,7 +253,6 @@
             do l=lmin,CP%Max_l
                 ! (2*l+1)l(l+1)/4pi C_phi_phi: Cl_scalar(l,1,C_Phi) is l^4 C_phi_phi
                 Cphil3(l) = CPP(l)*(l+0.5_dl)/real((l+1)*l, dl)
-                !write(*,*) 'Cphil3(l)', CPP(l), (l+0.5_dl), real((l+1)*l, dl)
                 fac = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
                 if (f_i_2>1 .or. f_i_2>1) then
                     CTT(l) =   CLData%Cl_Scalar_Array(l,4+ (f_i_1-2)*2,4+ (f_i_2-2)*2)*fac
@@ -264,19 +264,15 @@
                     CTE(l) =  CLData%Cl_scalar(l,C_Cross)*fac
                 end if
             end do
-            !write(*,*) 'here1'
             if (Cphil3(10) > lensing_sanity_check_amplitude) then
-                write(*,*) 'here2'
                 call AmplitudeError()
                 return
             end if
             if (lmax > CP%Max_l) then
-                !write(*,*) 'here3'
                 l=CP%Max_l
                 sc = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
                 fac2=CTT(CP%Max_l)/(sc*highL_CL_template(CP%Max_l, C_Temp))
                 fac=Cphil3(CP%Max_l)/(sc*highL_CL_template(CP%Max_l, C_Phi))
-                !write(*,*) 'fac args : ', Cphil3(CP%Max_l),(sc*highL_CL_template(CP%Max_l, C_Phi))
                 do l=CP%Max_l+1, lmax
                     !Fill in tail from template
                     sc = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
@@ -285,18 +281,15 @@
                     CTT(l) =  highL_CL_template(l, C_Temp)*fac2*sc
                     CEE(l) =  highL_CL_template(l, C_E)*fac2 *sc
                     CTE(l) =  highL_CL_template(l, C_Cross)*fac2*sc
-                    !write(*,*) 'Cphil3 args : ', highL_CL_template(l, C_Phi), fac, sc
                     if (Cphil3(CP%Max_l+1) > 1e-7) then
                         call MpiStop('You need to normalize the high-L template so it is dimensionless')
                     end if
                 end do
             end if
             if (ALens_Fiducial > 0) then
-                write(*,*) 'here4'
                 do l=2, lmax
                     sc = (2*l+1)/const_fourpi * const_twopi/(l*(l+1))
                     Cphil3(l) =  sc * highL_CL_template(l, C_Phi) * ALens_Fiducial
-                    !write(*,*) 'high tmplate: ', highL_CL_template(l, C_Phi), l, C_phi
                 end do
             end if
 
@@ -347,7 +340,6 @@
 
                     sigmasq = sigmasq  +  (1-d_11(l))*Cphil3(l)
                     Cg2 = Cg2  + d_m11(l)*Cphil3(l)
-                    !write(*,*) 'args in', d_m11(l), Cphil3(l)
                     d_22(l) = ( ((4*x-8)/fac2 + llp1)*P(l) &
                         + 4*fac*( fac2 + (x - 2)/llp1)*dP(l) )/ lfacs2(l)
 
@@ -424,7 +416,6 @@
                     !Non perturbative isotropic integrals
                     !these are approx, but extremely good approximations
                     X000 = exp(-llp1*sigmasq/4)
-                    !write(*,*) 'X0 :', X000, exp(-llp1*sigmasq/4)
                     if (approx) then
 
                         X022 = X000
@@ -456,8 +447,6 @@
                     fac = ( (X000**2-1) + Cg2sq*fac1)*P(l)+ Cg2sq*fac3*d2m2 &
                         + 8/llp1* fac1*Cg2*dm11
 
-                    !write(*,*) 'args : ', X000, Cg2sq, Cg2
-
                     corrcontribs(j,1)=  CTT(l) * fac
 
                     fac2=(Cg2*dX022)**2+(X022**2-1)
@@ -480,12 +469,9 @@
                     corrcontribs(j,4)= CTE(l) * fac
 
                 end do
-                !write(*,*) 'CTT, CTE, CTEE', CTT(100), CEE(100), CTE(100)
-                !write(*,*) 'fac', fac
 
                 do j=1,4
                     corr(j) = sum(corrcontribs(1:14,j))+interp_fac*sum(corrcontribs(15:jmax,j))
-                    !write(*,*) 'corr args', sum(corrcontribs(1:14,j))!, interp_fac*sum(corrcontribs(15:jmax,j))
                 end do
 
                 !if (short_integral_range .and. i>npoints-20) &
@@ -493,21 +479,19 @@
 
                 if (short_integral_range .and. i>npoints-apodize_point_width*3) &
                     corr=corr*exp(-(i-npoints+apodize_point_width*3)**2/real(2*apodize_point_width**2))
-                    !write(*,*) 'here ?'
-                !write(*,*) 'corr4',corr(4)
+
                 !taper the end to help prevent ringing
 
                 !Interpolate contributions
                 !Increasing interp_fac and using this seems to be slower than above
-                if (.false.) then
-                    !write(*,*) 'here0 ?', short_integral_range
+
+                if (.false.) then !?
                     if (abs(sum(corrcontribs(1:jmax,1)))>1e-11) print *,i,sum(corrcontribs(1:jmax,1))
                     do j=1,4
                         call spline_def(xl,corrcontribs(:,j),jmax,ddcontribs(:,j))
                     end do
                     corr=0
                     llo=1
-                    write(*,*) 'lmin, lmax', lmin, lmax
                     do l=lmin,lmax
                         if ((l > ls(llo+1)).and.(llo < jmax)) then
                             llo=llo+1
@@ -528,7 +512,6 @@
                             fac1* ddcontribs(llo,3) +fac2*ddcontribs(lhi,3)
                         corr(4) = Corr(4)+ a0*corrcontribs(llo,4)+ b0*corrcontribs(lhi,4)+ &
                             fac1* ddcontribs(llo,4) +fac2*ddcontribs(lhi,4)
-                        !write(*,*) 'corr args', a0, corrcontribs(llo,2), b0, corrcontribs(lhi,2)
                     end do
                 end if
             
@@ -542,17 +525,14 @@
 
                     T2 = corr(2)* d_22(l)
                     T4 = corr(3)* d_2m2(l)
-                    !write(*,*) 'T args', corr(2), corr(3), d_22(l), d_2m2(l)
 
 
                     lens_contrib(CT_E, l, thread_ix)= lens_contrib(CT_E,l, thread_ix) + &
                         (T2+T4)*halfsinth
                     lens_contrib(CT_B, l, thread_ix)= lens_contrib(CT_B,l, thread_ix) + &
                         (T2-T4)*halfsinth
-                    !write(*,*) 'B args : ', T2, T4, halfsinth
                     lens_contrib(CT_Cross, l, thread_ix)= lens_contrib(CT_Cross,l, thread_ix) + &
                         corr(4)*d_20(l)*sinth
-                    !write(*,*) 'fabric arg s:', T2,T4, halfsinth
                 end do
 
             end do
@@ -567,7 +547,6 @@
                     CLData%Cl_lensed_freqs(l,CT_E,f_i_1-1,f_i_2-1)=sum(lens_contrib(CT_E,l,:))*fac + &
                         +  CLData%Cl_Scalar_Array(l,5+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
                     CLData%Cl_lensed_freqs(l,CT_B,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_B,l,:))*fac
-                    !write(*,*) 'Mode B :', sum(lens_contrib(CT_B,l,:))
                     CLData%Cl_lensed_freqs(l,CT_Cross,f_i_1-1,f_i_2-1)= sum(lens_contrib(CT_Cross,l,:))*fac + &
                         +  CLData%Cl_Scalar_Array(l,4+ (f_i_1-2)*2,5+ (f_i_2-2)*2)
                 end do
@@ -591,35 +570,6 @@
 
         if (DebugMsgs) call Timer%WriteTime('Time for corr lensing')
     end associate
-       
-    !fac = 1000*(1000+1)/OutputDenominator*dtheta*const_twopi
-    !write(*,*) 'totalo args', sum(lens_contrib(CT_Temp,1000,:))*fac, CLData%Cl_Scalar_Array(1000,12,12)
-    !fac = 1000*(1000+1)/OutputDenominator*dtheta*const_twopi
-    !write(*,*) 'totalo args', sum(lens_contrib(CT_Temp,1000,:))*fac, CLData%Cl_Scalar_Array(1000,12,12)
-
-    !filename = 'array.dat'
-
-    ! Open the file for writing
-    !open(unit=10, file=filename, status='replace', action='write')
-
-    ! Write the array values to the file
-    ! Write the array values along with their row indices to the file
-    !do k1 = 1, CLout%lmax_lensed
-    !    write(10, '(I6, A)', advance='no') k1, CHAR(9) ! Write the row index followed by a tab
-    !    do k2 = 1, 4
-    !        if (k2 < 4) then
-    !            write(10, '(F40.20, A)', advance='no') CLData%Cl_lensed_freqs(k1, k2, 12, 12), CHAR(9) ! Write value followed by a tab
-    !        else
-    !            write(10, '(F40.20)') CLData%Cl_lensed_freqs(k1, k2, 12, 12) ! Write last value in the row without a tab
-    !        end if
-    !    end do
-    !    write(10, *) ! End the line after each row
-    !end do
-
-    ! Close the file
-    !close(10)
-
-    !print *, 'Array values written to ', trim(filename)
 
     end subroutine CorrFuncFullSkyImpl
 
